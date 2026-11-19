@@ -9,31 +9,36 @@ on:
         description: "Re-parse curated sources and resync the registry"
         type: boolean
         default: false
+  push:                      # page/code changes redeploy without collecting
+    branches: [main]
+    paths: ["index.html", "assets/**", "tf/**", "pyproject.toml", ".github/workflows/daily.yml"]
 
 permissions:
   contents: write
   issues: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: daily
   cancel-in-progress: false
 
+env:
+  TZ: Asia/Seoul
+
 jobs:
   collect:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      TZ: Asia/Seoul
     steps:
       - uses: actions/checkout@v7
-
       - uses: astral-sh/setup-uv@v10.3.3
-
       - run: uv sync --frozen
 
       - name: Sync sources (Mondays KST, or on demand)
-        if: ${{ inputs.sync_sources || github.event_name == 'schedule' }}
         run: |
           if [ "${{ inputs.sync_sources }}" = "true" ] || [ "$(date +%u)" = "1" ]; then
             uv run python -m tf.sources
@@ -74,3 +79,40 @@ jobs:
           gh issue create --label data-gate \
             --title "Daily data run failed: $(date +%F)" \
             --body "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  deploy:
+    needs: collect
+    if: ${{ !cancelled() && needs.collect.result != 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main            # pick up the data commit pushed by the collect job
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv sync --frozen
+
+      - name: Build site
+        id: build
+        run: |
+          if ! compgen -G "data/snapshots/*.json" > /dev/null; then
+            echo "no snapshots yet; keeping the current deployment"
+            exit 0
+          fi
+          uv run python -m tf.build
+          mkdir -p _site/data
+          cp -r index.html assets _site/
+          cp data/trending.json _site/data/
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.build.outputs.ok == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - if: steps.build.outputs.ok == 'true'
+        id: deploy
+        uses: actions/deploy-pages@v5
