@@ -6,6 +6,7 @@ Usage: uv run python -m tf.sources [--dry-run]
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from collections import defaultdict
@@ -151,6 +152,7 @@ def sync(dry_run: bool = False) -> dict:
     ov = load(DATA / "overrides.json", {"include": {}, "tags": {}, "block": []})
     registry = load(DATA / "registry.json", {"repos": {}})
     repos: dict[str, dict] = registry["repos"]
+    before = json.loads(json.dumps(repos))  # deep copy to detect real changes
     blocked = {b.lower() for b in ov.get("block", [])}
 
     gh = GitHub()
@@ -210,8 +212,10 @@ def sync(dry_run: bool = False) -> dict:
         entry["tags"] = {k: sorted(v) for k, v in tags.items()}
         repos[rid] = entry
 
-    registry = {"updated": now_iso(), "count": len(repos), "repos": dict(sorted(repos.items(), key=lambda kv: kv[1]["name"].lower()))}
-    print(f"registry: {len(repos)} repos  {dict(stats)}", file=sys.stderr)
+    repos = dict(sorted(repos.items(), key=lambda kv: kv[1]["name"].lower()))
+    changed = repos != before
+    registry = {"updated": now_iso() if changed else registry.get("updated", now_iso()), "count": len(repos), "repos": repos}
+    print(f"registry: {len(repos)} repos  {dict(stats)}  changed={changed}", file=sys.stderr)
     if not dry_run:
         write_registry(registry)
     return registry
@@ -219,8 +223,6 @@ def sync(dry_run: bool = False) -> dict:
 
 def write_registry(registry: dict) -> None:
     """One repo per line: readable diffs without the bloat of full indentation."""
-    import json
-
     lines = ["{", f'  "updated": {json.dumps(registry["updated"])},', f'  "count": {registry["count"]},', '  "repos": {']
     items = list(registry["repos"].items())
     for i, (rid, entry) in enumerate(items):
