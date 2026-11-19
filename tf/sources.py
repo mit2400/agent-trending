@@ -12,7 +12,7 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from .common import DATA, dump, load, now_iso, today
+from .common import DATA, load, now_iso, today
 from .gh import GitHub, topics
 from .probe import probe
 

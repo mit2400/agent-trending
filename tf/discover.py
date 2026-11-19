@@ -19,7 +19,13 @@ import httpx
 from .common import DATA, load, now_iso, today
 from .gh import REPO_FIELDS, GitHub, topics
 from .probe import probe
-from .sources import TOPIC_TAGS, apply_files, entry_from_node, manual_tags, write_registry
+from .sources import (
+    TOPIC_TAGS,
+    apply_files,
+    entry_from_node,
+    manual_tags,
+    write_registry,
+)
 
 SEARCH = """query($q: String!, $after: String) {
   search(query: $q, type: REPOSITORY, first: 100, after: $after) {

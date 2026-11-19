@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Iterable
+from typing import Iterable
 
 import httpx
 
