@@ -130,7 +130,9 @@ checkout → uv sync
   - 레지스트리 내용이 바뀌지 않으면 커밋하지 않음
 - [x] **M3** `tf.build` → `trending.json` (7일 윈도우, 짧으면 가장 오래된 스냅샷 기준, 상승률, 신규)
 - [x] **M4** 정적 페이지 v1 (podium, 탭, 필터, sparkline) + 고정 OG 카드(`tools/make_og.py`)
-- [x] **M5** `tf.discover`: **5k★ 이상만** 자동 추가 (+402개). Trending(daily)은 매일, topic 검색은 월요일에만
+- [x] **M5** `tf.discover`: Trending repos와 developers의 popular repo는 매일(daily), topic 검색은 월요일에만
+- [x] **모든 추적 레포는 5k★ 이상** (`sources.json` `min_stars`). 월요일 동기화 때 5k 미만은 제거 (수동 include는 예외)
+- [x] 소스 21개: 범위가 넓은 리스트는 `require_keywords`로 에이전트 관련 레포만 받음
 - [x] 파일 기반 태깅 `tf.probe`: `SKILL.md`/`skills/`→skill, `.claude-plugin/plugin.json`·`gemini-extension.json`→plugin,
       `marketplace.json`은 plugin 3개 이상이면 marketplace(아니면 plugin)
 - [x] Pages를 Actions 배포로 전환. `trending.json`은 커밋하지 않음 (git 증가량 약 10MB/년)

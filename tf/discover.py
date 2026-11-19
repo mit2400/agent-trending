@@ -27,6 +27,7 @@ SEARCH = """query($q: String!, $after: String) {
     nodes { ... on Repository { %s } }
   }
 }""" % REPO_FIELDS
+DEV_POPULAR = re.compile(r'Popular repo</div>\s*<h1[^>]*>\s*<a[^>]*href="/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)"')
 TRENDING_LINK = re.compile(r'<h2 class="h3 lh-condensed">\s*<a[^>]*href="/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)"')
 
 
@@ -51,7 +52,16 @@ def trending_names(since: str) -> list[str]:
     return list(dict.fromkeys(TRENDING_LINK.findall(r.text)))
 
 
-def discover(dry_run: bool = False, since: list[str] | None = None, topics_on: bool = True) -> list[str]:
+def trending_dev_repos(since: str) -> list[str]:
+    """Popular repo of each developer on github.com/trending/developers."""
+    r = httpx.get(f"https://github.com/trending/developers?since={since}", headers={"User-Agent": "agent-trending"},
+                  timeout=30, follow_redirects=True)
+    r.raise_for_status()
+    return list(dict.fromkeys(DEV_POPULAR.findall(r.text)))
+
+
+def discover(dry_run: bool = False, since: list[str] | None = None, topics_on: bool = True,
+             dev_since: list[str] | None = None) -> list[str]:
     cfg = load(DATA / "sources.json")["discovery"]
     ov = load(DATA / "overrides.json", {"include": {}, "tags": {}, "block": []})
     blocked = {b.lower() for b in ov.get("block", [])}
@@ -87,15 +97,25 @@ def discover(dry_run: bool = False, since: list[str] | None = None, topics_on: b
             names += trending_names(period)
         except Exception as e:  # scraping is best-effort
             print(f"  ! trending {period}: {e}", file=sys.stderr)
+    origin = {n: "discover:trending" for n in names}
+    dev_names: list[str] = []
+    for period in dev_since or cfg["trending"].get("developers_since", []):
+        try:
+            dev_names += trending_dev_repos(period)
+        except Exception as e:
+            print(f"  ! trending developers {period}: {e}", file=sys.stderr)
+    for n in dev_names:
+        origin.setdefault(n, "discover:trending-dev")
+    print(f"  trending developers: {len(set(dev_names))} popular repos listed", file=sys.stderr)
     trending_new = 0
-    for name, n in gh.repos_by_name(dict.fromkeys(names)).items():
+    for name, n in gh.repos_by_name(origin).items():
         if not n or n["id"] in repos or n["id"] in found or n["stargazerCount"] < min_stars:
             continue
         text = " ".join([n["nameWithOwner"], n.get("description") or "", *topics(n)])
         if kw.search(text) and not n["isFork"] and not n["isArchived"]:
-            found[n["id"]] = (n, {"type": set(), "scope": set()}, "discover:trending")
+            found[n["id"]] = (n, {"type": set(), "scope": set()}, origin[name])
             trending_new += 1
-    print(f"  trending: {len(names)} repos listed, {trending_new} new", file=sys.stderr)
+    print(f"  trending repos + developers: {trending_new} new", file=sys.stderr)
 
     added = []
     for rid, (n, hints, source) in found.items():
@@ -128,9 +148,10 @@ def discover(dry_run: bool = False, since: list[str] | None = None, topics_on: b
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--since", help="override trending periods, e.g. daily,weekly,monthly")
+    ap.add_argument("--since", help="override trending periods (repos and developers), e.g. daily,weekly,monthly")
     ap.add_argument("--trending-only", action="store_true", help="skip topic search")
     a = ap.parse_args()
-    added = discover(a.dry_run, a.since.split(",") if a.since else None, not a.trending_only)
+    periods = a.since.split(",") if a.since else None
+    added = discover(a.dry_run, periods, not a.trending_only, periods)
     for name in added[:50]:
         print(name)

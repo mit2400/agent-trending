@@ -72,6 +72,7 @@ class Hit:
     sources: set[str] = field(default_factory=set)
     types: set[str] = field(default_factory=set)
     scopes: set[str] = field(default_factory=set)
+    loose: bool = False  # True if any source lists it without a keyword requirement
 
 
 def clean_heading(text: str) -> str:
@@ -137,6 +138,7 @@ def collect_hits(gh: GitHub, cfg: dict) -> dict[str, Hit]:
             key = lower_to_name.setdefault(full.lower(), full)
             h = hits[key]
             h.sources.add(repo)
+            h.loose |= not src.get("require_keywords", False)
             h.scopes.update(scopes)
             if default_types:
                 h.types.update(default_types)
@@ -145,6 +147,7 @@ def collect_hits(gh: GitHub, cfg: dict) -> dict[str, Hit]:
         # the curated list itself is tracked too
         key = lower_to_name.setdefault(repo.lower(), repo)
         hits[key].sources.add(repo)
+        hits[key].loose = True
         hits[key].types.add("list")
         hits[key].scopes.update(scopes)
         print(f"  {repo}: {len(links)} links", file=sys.stderr)
@@ -173,7 +176,8 @@ def sync(dry_run: bool = False) -> dict:
     gh = GitHub()
     hits = collect_hits(gh, cfg)
     for name in ov.get("include", {}):
-        hits.setdefault(name, Hit())
+        hits.setdefault(name, Hit()).loose = True
+    keywords = re.compile(cfg["discovery"]["trending"]["keywords"], re.I)
 
     names = [n for n in hits if n.lower() not in blocked]
     print(f"resolving {len(names)} repos …", file=sys.stderr)
@@ -206,6 +210,10 @@ def sync(dry_run: bool = False) -> dict:
             if node["stargazerCount"] < cfg["min_stars"]:
                 stats["skip_low_stars"] += 1
                 continue
+            text = " ".join([canon, node.get("description") or "", *topics(node)])
+            if not hits[name].loose and not keywords.search(text):
+                stats["skip_offtopic"] += 1
+                continue
         seen.add(rid)
 
         h = hits[name]
@@ -226,6 +234,18 @@ def sync(dry_run: bool = False) -> dict:
         entry["sources"] = sorted(h.sources)
         entry["tags"] = {k: sorted(v) for k, v in tags.items()}
         repos[rid] = entry
+
+    # prune: every tracked repo must hold >= min_stars (manual includes exempt)
+    fresh = {nodes[n]["id"]: nodes[n]["stargazerCount"] for n in names if nodes.get(n)}
+    rest = [rid for rid in repos if rid not in fresh]
+    fresh.update({rid: n["stargazerCount"] for rid, n in gh.repos_by_id(rest, "id stargazerCount").items() if n})
+    for rid in list(repos):
+        e = repos[rid]
+        if e["name"].lower() in forced or rid not in fresh:
+            continue
+        if fresh[rid] < cfg["min_stars"]:
+            del repos[rid]
+            stats["pruned"] += 1
 
     probed = probe(gh, repos)
     print(f"probed {probed} new repos for marker files", file=sys.stderr)

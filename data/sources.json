@@ -1,5 +1,5 @@
 {
-  "min_stars": 10,
+  "min_stars": 5000,
   "skip_sections": [
     "sponsor", "contribut", "license", "table of contents", "changelog", "star history",
     "developed by", "security notice", "legend", "tutorial", "community$", "subscribe",
@@ -41,6 +41,7 @@
     },
     "trending": {
       "since": ["daily"],
+      "developers_since": ["daily"],
       "keywords": "\\b(agents?|agentic|mcp|claude|codex|cursor|gemini|copilot|llms?|skills?|plugins?|subagents?|vibe|coding assistant|model context protocol)\\b"
     }
   },
@@ -62,6 +63,10 @@
     { "repo": "Jenqyang/Awesome-AI-Agents",             "tags": { "scope": ["general"] } },
     { "repo": "ashishpatel26/500-AI-Agents-Projects",   "tags": { "scope": ["general"] } },
     { "repo": "ai-for-developers/awesome-ai-coding-tools", "tags": { "scope": ["general"] } },
-    { "repo": "filipecalegario/awesome-vibe-coding",    "tags": { "scope": ["general"] } }
+    { "repo": "filipecalegario/awesome-vibe-coding",    "tags": { "scope": ["general"] } },
+    { "repo": "0xNyk/awesome-hermes-agent",             "tags": { "scope": ["general"] } },
+    { "repo": "heilcheng/awesome-agent-skills",         "tags": { "scope": ["general"], "type": ["skill"] } },
+    { "repo": "ai-boost/awesome-harness-engineering",   "tags": { "scope": ["general"] }, "require_keywords": true },
+    { "repo": "kyrolabs/awesome-langchain",             "tags": { "scope": ["general"] }, "require_keywords": true }
   ]
 }
