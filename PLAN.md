@@ -10,7 +10,7 @@ GitHub 레포를 매일 수집해 **star 상승폭 기준 트렌딩**을 보여�
 | 추적 단위 | GitHub 레포. skill/mcp/plugin 등은 **태그** |
 | 도메인 | 에이전트 생태계 전반. `scope` 태그(general / claude-code / codex …)로 구분, 자동 판정 불가 시 수동 |
 | 큐레이션 | awesome 리스트를 **소스로 계속 재파싱**하여 레지스트리 자동 갱신 |
-| 갱신 | 매일 08:47 KST 수집 → JSON 커밋/푸시 → 정적 페이지가 JSON을 읽음 (별도 배포 파이프라인 없음) |
+| 갱신 | 매일 08:30 KST 수집 → JSON 커밋/푸시 → 정적 페이지가 JSON을 읽음 (별도 배포 파이프라인 없음) |
 | 지표 | ① 절대 상승폭 ② 상승률 ③ 신규 진입. 윈도우 7일, 기록이 부족하면 **가장 오래된 기록과 diff** |
 | 페이지 | 정적 HTML + vanilla JS (빌드 단계 없음). README는 스크린샷 + 소개 + 링크 |
 | 스택 | Python 3.12 (uv), 의존성 최소: `httpx`, `jsonschema`, `selectolax`(trending HTML) |
@@ -18,7 +18,7 @@ GitHub 레포를 매일 수집해 **star 상승폭 기준 트렌딩**을 보여�
 ## 레포 구조
 
 ```
-.github/workflows/daily.yml     # cron: '47 23 * * *' (UTC) = 08:47 KST
+.github/workflows/daily.yml     # cron: '30 23 * * *' (UTC) = 08:30 KST
 tf/                             # Python 패키지
   sources.py    # awesome 리스트 README 파싱 → registry 갱신
   discover.py   # Search API(topic 쿼리) + Trending 스크래핑 → candidates

@@ -90,6 +90,15 @@ def check(date: str) -> tuple[list[str], list[str]]:
         elif crashed:
             warns.append(f"{len(crashed)} repos lost >50% stars: {crashed[:5]}")
 
+    # 6. page data built from today's snapshot (never preview data)
+    trending = load(DATA / "trending.json")
+    if not trending or trending.get("date") != date:
+        errors.append("trending.json missing or not built for today")
+    elif trending.get("preview"):
+        errors.append("trending.json is preview data")
+    elif trending.get("count", 0) < len(stars) * MIN_COVERAGE:
+        errors.append(f"trending.json has {trending.get('count')} repos, snapshot has {len(stars)}")
+
     if snap.get("missing"):
         warns.append(f"{len(snap['missing'])} repos missing (deleted or private)")
     return errors, warns
