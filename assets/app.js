@@ -257,6 +257,7 @@
     .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then((d) => {
       data = d;
+      if (Array.isArray(d.sources)) d.sources = { discovery: [], curated: d.sources.map((repo) => ({ repo, count: 0 })) };
       hasDeltas = d.repos.some((r) => r.delta);
       if (!hasDeltas) {
         state.tab = "alltime";

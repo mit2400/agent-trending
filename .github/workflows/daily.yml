@@ -137,6 +137,8 @@ jobs:
           fi
           mkdir -p _site/data
           cp -r index.html assets _site/
+          v=$(git rev-parse --short HEAD)
+          sed -i "s#assets/app.js#assets/app.js?v=$v#; s#assets/style.css#assets/style.css?v=$v#" _site/index.html
           cp data/trending.json _site/data/
           uv run python -m tf.publish feed --out _site/feed.xml
           echo "ok=true" >> "$GITHUB_OUTPUT"
