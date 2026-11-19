@@ -50,7 +50,8 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
         delta = stars - base if wd > 0 else None
         rate = round(delta / base, 5) if delta is not None and base > 0 else None
         created_recently = days(e["created"], date) <= NEW_REPO_DAYS
-        joined_recently = rid not in first_seen and days(e["added"], date) <= WINDOW
+        # preview snapshots predate most registry additions; don't flag those as new
+        joined_recently = not preview and rid not in first_seen and days(e["added"], date) <= WINDOW
         out.append({
             "id": rid,
             "name": e["name"],

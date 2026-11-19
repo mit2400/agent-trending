@@ -9,9 +9,13 @@ on:
         description: "Re-parse curated sources and resync the registry"
         type: boolean
         default: false
+      deploy_only:
+        description: "Only rebuild and redeploy the site (no collection)"
+        type: boolean
+        default: false
   push:                      # page/code changes redeploy without collecting
     branches: [main]
-    paths: ["index.html", "assets/**", "tf/**", "pyproject.toml", ".github/workflows/daily.yml"]
+    paths: ["index.html", "assets/**", "tf/**", "preview/**", "pyproject.toml", ".github/workflows/daily.yml"]
 
 permissions:
   contents: write
@@ -28,7 +32,7 @@ env:
 
 jobs:
   collect:
-    if: github.event_name != 'push'
+    if: github.event_name != 'push' && !inputs.deploy_only
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -122,11 +126,15 @@ jobs:
       - name: Build site
         id: build
         run: |
-          if ! compgen -G "data/snapshots/*.json" > /dev/null; then
-            echo "no snapshots yet; keeping the current deployment"
+          if compgen -G "data/snapshots/*.json" > /dev/null; then
+            uv run python -m tf.build
+          elif compgen -G "preview/snapshots/*.json" > /dev/null; then
+            echo "no production snapshots yet; deploying preview data"
+            uv run python -m tf.build --snapshots preview/snapshots --preview
+          else
+            echo "no snapshots at all; keeping the current deployment"
             exit 0
           fi
-          uv run python -m tf.build
           mkdir -p _site/data
           cp -r index.html assets _site/
           cp data/trending.json _site/data/
