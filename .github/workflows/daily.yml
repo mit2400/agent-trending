@@ -1,0 +1,70 @@
+name: daily
+
+on:
+  schedule:
+    - cron: "47 23 * * *"   # 08:47 KST
+  workflow_dispatch:
+    inputs:
+      sync_sources:
+        description: "Re-parse curated sources and resync the registry"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TZ: Asia/Seoul
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - run: uv sync --frozen
+
+      - name: Sync sources (Mondays KST, or on demand)
+        if: ${{ inputs.sync_sources || github.event_name == 'schedule' }}
+        run: |
+          if [ "${{ inputs.sync_sources }}" = "true" ] || [ "$(date +%u)" = "1" ]; then
+            uv run python -m tf.sources
+          else
+            echo "not Monday; skipping source sync"
+          fi
+
+      - name: Collect stars
+        run: uv run python -m tf.collect
+
+      - name: Gate
+        run: uv run python -m tf.gate
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "data: $(date +%F)"
+          git push
+
+      - name: Open issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create data-gate --color B60205 --description "Daily data run failed" 2>/dev/null || true
+          gh issue create --label data-gate \
+            --title "Daily data run failed: $(date +%F)" \
+            --body "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
