@@ -120,3 +120,20 @@ checkout → uv sync
 - **M4** 페이지
 - **M5** `discover.py` (Search API topic 쿼리, Trending 스크래핑, 자동 승격)
 - **M6** README(스크린샷, 소개), 수동 태깅 정리
+
+## 진행 상황
+
+- [x] **M0** 레포 생성(`mit2400/agent-trending`), Pages(main 루트). 봇(`GITHUB_TOKEN`) 푸시로 Pages가 재빌드되는 것 확인함
+- [x] **M1** 소스 17개 파싱 → 레지스트리 3,938개 (star 10개 미만 3,311개, fork/archived 143개, 없는 레포 90개 제외)
+- [x] **M2** `tf.collect` / `tf.gate` / `daily.yml` 가동. 첫 스냅샷 `2026-11-20`
+  - 소스 동기화는 **월요일(KST)에만** 실행(약 2.5분). 매일 수집은 node ID로 star만 조회(약 1.5분)
+  - 레지스트리 내용이 바뀌지 않으면 커밋하지 않음
+- [ ] **M3** `tf.build` → `trending.json`
+- [ ] **M4** 페이지 (데이터가 며칠 쌓인 뒤 시안 비교)
+- [ ] **M5** discovery (Search API topic 쿼리, Trending 스크래핑)
+- [ ] **M6** README, 수동 태깅 정리
+
+### 운영 메모
+- 소스 추가/제외: `data/sources.json`. 태그 수동 지정, 강제 포함, 차단: `data/overrides.json`
+- 수동 실행: Actions → daily → Run workflow (`sync_sources` 체크 시 레지스트리 재동기화)
+- `astral-sh/setup-uv`는 메이저 태그가 없으므로 정확한 버전으로 고정할 것
