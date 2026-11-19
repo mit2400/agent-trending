@@ -1,0 +1,11 @@
+# local reference clones
+claude-code-best-practice/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+.DS_Store
+.env
