@@ -100,7 +100,7 @@ def main(font_path: str) -> None:
     d = ImageDraw.Draw(img)
 
     sub_f = font(font_path, 28, "Medium")
-    d.text((72 * s, 410 * s), "Repos · MCP servers · Skills · Plugins", font=sub_f, fill=TEXT2)
+    d.text((72 * s, 410 * s), "Agents · MCP · Skills · Plugins · AI tools", font=sub_f, fill=TEXT2)
     d.text((72 * s, 452 * s), "ranked by 7-day GitHub star growth", font=sub_f, fill=TEXT2)
 
     foot_f = font(font_path, 24, "Medium")

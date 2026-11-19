@@ -1,12 +1,12 @@
 # Agent Trending
 
-**What's rising in the AI agent ecosystem — ranked by GitHub star growth, refreshed every morning.**
+**What's rising in the AI agent ecosystem.** Agents, MCP servers, skills, plugins, marketplaces & AI tools — ranked by GitHub star growth, refreshed every morning.
 
 [![Agent Trending](assets/og.png)](https://mit2400.github.io/agent-trending/)
 
 🔗 **Live leaderboard: https://mit2400.github.io/agent-trending/**
 
-Agent Trending tracks about a thousand established repos around AI agents (Claude Code, Codex, Cursor, Gemini CLI, MCP servers, skills, plugins, marketplaces, agent frameworks and tools) and shows which ones are gaining stars fastest right now.
+Agent Trending tracks about a thousand established repos around AI agents (Claude Code, Codex, Cursor, Gemini CLI, MCP servers, skills, plugins, marketplaces, agent frameworks and AI tools) and shows which ones are gaining stars fastest right now.
 
 - 🔥 **Top gains**: most stars gained over the last 7 days
 - 📈 **Fastest growing**: biggest growth in percent
