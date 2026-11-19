@@ -6,7 +6,8 @@
     "modelcontextprotocol/servers":   { "type": ["mcp"], "scope": ["general"] },
     "wshobson/agents":                { "type": ["subagent", "plugin"], "scope": ["claude-code"] },
     "openai/codex":                   { "type": ["client"], "scope": ["codex"] },
-    "google-gemini/gemini-cli":       { "type": ["client"], "scope": ["gemini-cli"] }
+    "google-gemini/gemini-cli":       { "type": ["client"], "scope": ["gemini-cli"] },
+    "tobi/qmd":                       { "type": ["tool", "mcp"], "scope": ["general"] }
   },
   "tags": {},
   "block": []
