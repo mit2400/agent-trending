@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-19T16:13:22Z",
+  "updated": "2026-11-19T16:19:46Z",
   "count": 3938,
   "repos": {
     "R_kgDORz9lBQ": {"added":"2026-11-20","name":"0-AI-UG/cate","description":"An infinite zoomable canvas for coding. Editor, terminal, and browser panels in a spatial workspace.","language":"TypeScript","topics":[],"created":"2026-03-29","archived":false,"sources":["ai-for-developers/awesome-ai-coding-tools","hesreallyhim/awesome-claude-code","kyrolabs/awesome-agents"],"tags":{"type":["client"],"scope":["claude-code","general"]}},
