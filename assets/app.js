@@ -13,6 +13,7 @@
     delta: { metric: "Gain" },
     rate: { metric: "Growth" },
     new: { metric: "Gain" },
+    alltime: { metric: "Gain" },
   };
 
   const $ = (id) => document.getElementById(id);
@@ -118,7 +119,7 @@
       (state.scope === "all" || r.scope.includes(state.scope)) &&
       (!q || r.name.toLowerCase().includes(q) || (r.desc || "").toLowerCase().includes(q)));
     const byDelta = (a, b) => (b.delta ?? -Infinity) - (a.delta ?? -Infinity) || b.stars - a.stars;
-    if (!hasDeltas) return rs.sort((a, b) => b.stars - a.stars);
+    if (!hasDeltas || state.tab === "alltime") return rs.sort((a, b) => b.stars - a.stars);
     if (state.tab === "rate") return rs.filter((r) => r.rate > 0 && r.base >= data.rate_min_base).sort((a, b) => b.rate - a.rate || byDelta(a, b));
     if (state.tab === "new") return rs.filter((r) => r.new).sort(byDelta);
     return rs.filter((r) => r.delta != null).sort(byDelta);
@@ -131,12 +132,18 @@
     return (r.new ? `<span class="tag new">new</span>` : "") + t.join("") + s.join("");
   }
 
+  function podiumBig(r) {
+    if (state.tab === "alltime") return `★ ${cf.format(r.stars)}<small>${r.delta ? `${deltaHTML(r.delta)} · ${windowLabel(r.window)}` : "stars"}</small>`;
+    if (state.tab === "rate") return `${pct(r.rate)}<small>growth · ${windowLabel(r.window)}</small>`;
+    return `${deltaHTML(r.delta)}<small>stars · ${windowLabel(r.window)}</small>`;
+  }
+
   function renderPodium(top) {
     $("podium").innerHTML = top.map((r, i) => `
       <a class="card" href="https://github.com/${esc(r.name)}" target="_blank" rel="noopener">
         <span class="rank-badge">#${i + 1}</span>
         <div class="card-head">${avatar(r.name, 28)}<span class="name">${nameHTML(r.name)}</span></div>
-        <div class="big">${state.tab === "rate" ? pct(r.rate) : deltaHTML(r.delta)}<small>${state.tab === "rate" ? "growth" : "stars"} · ${windowLabel(r.window)}</small></div>
+        <div class="big">${podiumBig(r)}</div>
         <p class="desc">${esc(r.desc)}</p>
         ${spark(r.spark, 280, 44)}
       </a>`).join("");
@@ -144,7 +151,7 @@
 
   function render() {
     const rs = filtered();
-    const podium = hasDeltas && !state.q && rs.length >= 3 ? rs.slice(0, 3) : [];
+    const podium = (hasDeltas || state.tab === "alltime") && !state.q && rs.length >= 3 ? rs.slice(0, 3) : [];
     renderPodium(podium);
     const rest = rs.slice(podium.length);
     const shown = rest.slice(0, state.limit);
@@ -209,7 +216,7 @@
       n.textContent = `Preview data: rankings below come from two test snapshots taken ${windowLabel(1)} apart. Daily collection starts at 08:30 KST.`;
     } else if (!hasDeltas) {
       n.hidden = false;
-      n.textContent = "Collecting the first baseline — growth rankings appear after the next daily run (08:30 KST). Showing the most-starred repos meanwhile.";
+      n.textContent = "Collecting the first baseline — growth rankings appear after the next daily run (08:30 KST). Showing all-time stars meanwhile.";
     } else if (curWindow() < data.window_max) {
       n.hidden = false;
       n.textContent = `Tracking started ${fmtDate(data.tracking_start)}: growth is measured over the ${curWindow()} day(s) collected so far until a full 7-day window exists.`;
@@ -246,7 +253,10 @@
     .then((d) => {
       data = d;
       hasDeltas = d.repos.some((r) => r.delta);
-      if (!hasDeltas) document.querySelector(".tabs").hidden = true;
+      if (!hasDeltas) {
+        state.tab = "alltime";
+        document.querySelectorAll("#tabs button:not([data-tab=alltime])").forEach((b) => { b.hidden = true; });
+      }
       renderChrome();
       render();
     })
