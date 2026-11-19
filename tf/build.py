@@ -26,6 +26,34 @@ def days(a: str, b: str) -> int:
     return (dt.date.fromisoformat(b) - dt.date.fromisoformat(a)).days
 
 
+def source_credits(cfg: dict, overrides: dict, registry: dict, live: dict) -> dict:
+    """Where tracked repos come from, with how many currently tracked repos each one supplied."""
+    counts: Counter = Counter()
+    for rid, e in registry.items():
+        if rid in live:
+            counts.update(set(e.get("sources", [])))
+    topic_n = sum(n for k, n in counts.items() if k.startswith("discover:topic/"))
+    disc = cfg["discovery"]
+    topic_list = list(disc["topics"])
+    manual = {k.lower() for k in overrides.get("include", {})}
+    return {
+        "min_stars": cfg["min_stars"],
+        "discovery": [
+            {"label": "GitHub Trending — repos", "url": "https://github.com/trending",
+             "count": counts["discover:trending"]},
+            {"label": "GitHub Trending — developers' popular repos", "url": "https://github.com/trending/developers",
+             "count": counts["discover:trending-dev"]},
+            {"label": f"GitHub topics ({len(topic_list)})", "url": f"https://github.com/topics/{topic_list[0]}",
+             "detail": ", ".join(topic_list), "count": topic_n},
+            {"label": "Manual picks", "url": "https://github.com/mit2400/agent-trending/blob/main/data/overrides.json",
+             "count": sum(1 for rid, e in registry.items() if rid in live and e["name"].lower() in manual)},
+        ],
+        "curated": sorted(
+            ({"repo": s["repo"], "count": counts[s["repo"]]} for s in cfg["sources"]),
+            key=lambda s: -s["count"]),
+    }
+
+
 def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = False, write: bool = True) -> dict:
     files = sorted(p for p in snap_dir.glob("*.json") if date is None or p.stem <= date)
     if not files:
@@ -70,7 +98,8 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
         })
     out.sort(key=lambda r: (r["delta"] is None, -(r["delta"] or 0), -r["stars"]))
 
-    sources = load(DATA / "sources.json")["sources"]
+    cfg = load(DATA / "sources.json")
+    overrides = load(DATA / "overrides.json", {"include": {}})
     trending = {
         "generated_at": now_iso(),
         "date": date,
@@ -89,7 +118,7 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
             "type": dict(Counter(t for r in out for t in r["type"]).most_common()),
             "scope": dict(Counter(t for r in out for t in r["scope"]).most_common()),
         },
-        "sources": [s["repo"] for s in sources],
+        "sources": source_credits(cfg, overrides, registry, cur_stars),
         "repos": out,
     }
     if not write:

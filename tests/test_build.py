@@ -21,7 +21,9 @@ def env(tmp_path, monkeypatch):
         }
     }
     (data / "registry.json").write_text(json.dumps(reg))
-    (data / "sources.json").write_text(json.dumps({"sources": [{"repo": "x/awesome"}]}))
+    (data / "sources.json").write_text(json.dumps({
+        "min_stars": 5000, "sources": [{"repo": "x/awesome"}],
+        "discovery": {"topics": {"ai-agents": {}}}}))
     monkeypatch.setattr(b, "DATA", data)
 
     def snap(date, stars):

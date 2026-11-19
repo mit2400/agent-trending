@@ -207,7 +207,7 @@
       `<span class="live">Updated <b>${esc(when)} KST</b></span>`,
       `<span><b>${nf.format(data.count)}</b> repos tracked</span>`,
       `<span>Window <b>${esc(windowLabel(curWindow()))}</b></span>`,
-      `<span><b>${data.sources.length}</b> curated sources</span>`,
+      `<span><b>${data.sources.curated.length}</b> curated lists + GitHub Trending</span>`,
     ].join("");
 
     const n = $("notice");
@@ -222,7 +222,12 @@
       n.textContent = `Tracking started ${fmtDate(data.tracking_start)}: growth is measured over the ${curWindow()} day(s) collected so far until a full 7-day window exists.`;
     }
 
-    $("sources").innerHTML = data.sources.map((s) => `<li><a href="https://github.com/${esc(s)}" target="_blank" rel="noopener">${esc(s)}</a></li>`).join("");
+    const cnt = (c) => `<span class="n">${nf.format(c)}</span>`;
+    $("discovery").innerHTML = data.sources.discovery.map((d) =>
+      `<li><a href="${esc(d.url)}" target="_blank" rel="noopener"${d.detail ? ` title="${esc(d.detail)}"` : ""}>${esc(d.label)}</a>${cnt(d.count)}</li>`).join("");
+    $("curated-count").textContent = `(${data.sources.curated.length})`;
+    $("sources").innerHTML = data.sources.curated.map((s) =>
+      `<li><a href="https://github.com/${esc(s.repo)}" target="_blank" rel="noopener">${esc(s.repo)}</a>${cnt(s.count)}</li>`).join("");
   }
 
   /* ---------- events ---------- */
