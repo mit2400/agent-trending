@@ -66,7 +66,9 @@
     { "repo": "filipecalegario/awesome-vibe-coding",    "tags": { "scope": ["general"] } },
     { "repo": "0xNyk/awesome-hermes-agent",             "tags": { "scope": ["general"] } },
     { "repo": "heilcheng/awesome-agent-skills",         "tags": { "scope": ["general"], "type": ["skill"] } },
-    { "repo": "ai-boost/awesome-harness-engineering",   "tags": { "scope": ["general"] }, "require_keywords": true },
-    { "repo": "kyrolabs/awesome-langchain",             "tags": { "scope": ["general"] }, "require_keywords": true }
+    { "repo": "ai-boost/awesome-harness-engineering",   "tags": { "scope": ["general"] } },
+    { "repo": "kyrolabs/awesome-langchain",             "tags": { "scope": ["general"] } },
+    { "repo": "ikaijua/Awesome-AITools",                "tags": { "scope": ["general"] } },
+    { "repo": "mahseema/awesome-ai-tools",              "tags": { "scope": ["general"] } }
   ]
 }
