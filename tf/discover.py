@@ -51,7 +51,7 @@ def trending_names(since: str) -> list[str]:
     return list(dict.fromkeys(TRENDING_LINK.findall(r.text)))
 
 
-def discover(dry_run: bool = False) -> list[str]:
+def discover(dry_run: bool = False, since: list[str] | None = None, topics_on: bool = True) -> list[str]:
     cfg = load(DATA / "sources.json")["discovery"]
     ov = load(DATA / "overrides.json", {"include": {}, "tags": {}, "block": []})
     blocked = {b.lower() for b in ov.get("block", [])}
@@ -63,7 +63,7 @@ def discover(dry_run: bool = False) -> list[str]:
 
     found: dict[str, tuple[dict, dict, str]] = {}  # id -> (node, tag hints, source)
 
-    for topic, hint in cfg["topics"].items():
+    for topic, hint in (cfg["topics"].items() if topics_on else []):
         try:
             nodes = search_topic(gh, topic, min_stars)
         except Exception as e:
@@ -82,11 +82,11 @@ def discover(dry_run: bool = False) -> list[str]:
 
     kw = re.compile(cfg["trending"]["keywords"], re.I)
     names: list[str] = []
-    for since in cfg["trending"]["since"]:
+    for period in since or cfg["trending"]["since"]:
         try:
-            names += trending_names(since)
+            names += trending_names(period)
         except Exception as e:  # scraping is best-effort
-            print(f"  ! trending {since}: {e}", file=sys.stderr)
+            print(f"  ! trending {period}: {e}", file=sys.stderr)
     trending_new = 0
     for name, n in gh.repos_by_name(dict.fromkeys(names)).items():
         if not n or n["id"] in repos or n["id"] in found or n["stargazerCount"] < min_stars:
@@ -128,6 +128,9 @@ def discover(dry_run: bool = False) -> list[str]:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
-    added = discover(ap.parse_args().dry_run)
+    ap.add_argument("--since", help="override trending periods, e.g. daily,weekly,monthly")
+    ap.add_argument("--trending-only", action="store_true", help="skip topic search")
+    a = ap.parse_args()
+    added = discover(a.dry_run, a.since.split(",") if a.since else None, not a.trending_only)
     for name in added[:50]:
         print(name)

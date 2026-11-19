@@ -40,7 +40,7 @@
       "cursor":                 { "scope": ["cursor"] }
     },
     "trending": {
-      "since": ["daily", "weekly"],
+      "since": ["daily"],
       "keywords": "\\b(agents?|agentic|mcp|claude|codex|cursor|gemini|copilot|llms?|skills?|plugins?|subagents?|vibe|coding assistant|model context protocol)\\b"
     }
   },
