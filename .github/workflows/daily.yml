@@ -46,6 +46,9 @@ jobs:
             echo "not Monday; skipping source sync"
           fi
 
+      - name: Discover new repos (>= 5k stars)
+        run: uv run python -m tf.discover
+
       - name: Collect stars
         run: uv run python -m tf.collect
 
@@ -54,6 +57,12 @@ jobs:
 
       - name: Test
         run: uv run pytest -q
+
+      - name: Weekly digest (Mondays KST, full 7-day window only)
+        run: |
+          if [ "$(date +%u)" = "1" ]; then
+            uv run python -m tf.publish digest | tee "$RUNNER_TEMP/digest_path"
+          fi
 
       - name: Gate
         run: uv run python -m tf.gate
@@ -69,6 +78,16 @@ jobs:
           fi
           git commit -m "data: $(date +%F)"
           git push
+
+      - name: Publish digest as a release (emails release watchers)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          f=$(cat "$RUNNER_TEMP/digest_path" 2>/dev/null || true)
+          if [ -z "$f" ] || [ ! -f "$f" ]; then echo "no digest this run"; exit 0; fi
+          tag="digest-$(basename "$f" .md)"
+          if gh release view "$tag" >/dev/null 2>&1; then echo "$tag exists"; exit 0; fi
+          gh release create "$tag" --title "$(head -1 "$f" | sed 's/^# //')" --notes-file "$f" --latest
 
       - name: Open issue on failure
         if: failure()
@@ -106,6 +125,7 @@ jobs:
           mkdir -p _site/data
           cp -r index.html assets _site/
           cp data/trending.json _site/data/
+          uv run python -m tf.publish feed --out _site/feed.xml
           echo "ok=true" >> "$GITHUB_OUTPUT"
 
       - if: steps.build.outputs.ok == 'true'

@@ -18,6 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="alternate" type="application/rss+xml" title="Agent Trending — daily top gainers" href="feed.xml">
 <link rel="stylesheet" href="assets/style.css">
 <script>
   try { const t = localStorage.getItem("theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -80,9 +81,14 @@
   <footer class="wrap foot">
     <div>
       <h2>How it works</h2>
-      <p>Every day at 08:30 KST a GitHub Action re-reads the curated lists below, records the star count of every tracked repo, and ranks them by growth over the last 7 days. When less than a week of history exists, the oldest available snapshot is used — the window is shown next to each number. Data is plain JSON in the repo.</p>
+      <p>Every day at 08:30 KST a GitHub Action re-reads the curated lists below, picks up established (5k★+) agent repos from GitHub topics and Trending, records the star count of every tracked repo, and ranks them by growth over the last 7 days. When less than a week of history exists, the oldest available snapshot is used — the window is shown next to each number. Data is plain JSON in the repo.</p>
     </div>
     <div>
+      <h2>Follow along</h2>
+      <ul class="follow">
+        <li><a href="feed.xml">RSS feed</a> — daily top 10 gainers</li>
+        <li><a href="https://github.com/mit2400/agent-trending/releases">Weekly digest</a> — emailed every Monday: <b>Watch → Custom → Releases</b></li>
+      </ul>
       <h2>Sources</h2>
       <ul class="sources" id="sources"></ul>
     </div>

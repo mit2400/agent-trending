@@ -18,6 +18,32 @@
     { "match": "guides?|learning|documentation|tips|concepts|best practice", "type": "learning" },
     { "match": "tools?|utilit|\\bcli\\b|status lines?|observability|monitor|usage", "type": "tool" }
   ],
+  "discovery": {
+    "min_stars": 5000,
+    "topics": {
+      "ai-agents":              { "type": ["agent"] },
+      "agentic-ai":             { "type": ["agent"] },
+      "llm-agent":              { "type": ["agent"] },
+      "autonomous-agents":      { "type": ["agent"] },
+      "multi-agent":            { "type": ["agent"] },
+      "computer-use":           { "type": ["agent"] },
+      "agent-framework":        { "type": ["framework"] },
+      "mcp-server":             { "type": ["mcp"] },
+      "model-context-protocol": { "type": ["mcp"] },
+      "agent-skills":           { "type": ["skill"] },
+      "coding-agent":           { "type": ["agent"] },
+      "ai-coding":              { "type": ["tool"] },
+      "vibe-coding":            { "type": ["tool"] },
+      "claude-code":            { "scope": ["claude-code"] },
+      "codex":                  { "scope": ["codex"] },
+      "gemini-cli":             { "scope": ["gemini-cli"] },
+      "cursor":                 { "scope": ["cursor"] }
+    },
+    "trending": {
+      "since": ["daily", "weekly"],
+      "keywords": "\\b(agents?|agentic|mcp|claude|codex|cursor|gemini|copilot|llms?|skills?|plugins?|subagents?|vibe|coding assistant|model context protocol)\\b"
+    }
+  },
   "sources": [
     { "repo": "shanraisshan/claude-code-best-practice", "tags": { "scope": ["claude-code"] } },
     { "repo": "hesreallyhim/awesome-claude-code",       "tags": { "scope": ["claude-code"] } },

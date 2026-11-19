@@ -26,7 +26,7 @@ def days(a: str, b: str) -> int:
     return (dt.date.fromisoformat(b) - dt.date.fromisoformat(a)).days
 
 
-def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = False) -> dict:
+def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = False, write: bool = True) -> dict:
     files = sorted(p for p in snap_dir.glob("*.json") if date is None or p.stem <= date)
     if not files:
         raise SystemExit(f"no snapshots in {snap_dir}")
@@ -91,6 +91,8 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
         "sources": [s["repo"] for s in sources],
         "repos": out,
     }
+    if not write:
+        return trending
     dump(DATA / "trending.json", trending, compact=True)
     movers = sum(1 for r in out if r["delta"])
     print(f"trending.json: {len(out)} repos, {movers} moved, window {window[0]['date']}..{date}", file=sys.stderr)

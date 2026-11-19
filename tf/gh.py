@@ -50,15 +50,19 @@ class GitHub:
         )
 
     def graphql(self, query: str, variables: dict | None = None) -> dict:
-        for attempt in range(4):
-            r = self.http.post(f"{API}/graphql", json={"query": query, "variables": variables or {}})
-            if r.status_code in (502, 503, 504) or (r.status_code == 403 and "rate" in r.text.lower()):
-                time.sleep(2 ** attempt * 5)
-                continue
-            r.raise_for_status()
-            return r.json()
-        r.raise_for_status()
-        return r.json()
+        """POST with retries on 5xx, rate limits, timeouts and empty/non-JSON bodies."""
+        last: Exception | None = None
+        for attempt in range(5):
+            try:
+                r = self.http.post(f"{API}/graphql", json={"query": query, "variables": variables or {}})
+                if r.status_code >= 500 or (r.status_code == 403 and "rate" in r.text.lower()):
+                    raise httpx.HTTPStatusError(f"{r.status_code}", request=r.request, response=r)
+                r.raise_for_status()
+                return r.json()
+            except (httpx.HTTPStatusError, httpx.TransportError, ValueError) as e:
+                last = e
+                time.sleep(2 ** attempt * 3)
+        raise RuntimeError(f"GraphQL failed after retries: {last}")
 
     def repos_by_name(self, names: Iterable[str]) -> dict[str, dict | None]:
         """Resolve owner/name -> repo node (None when missing). Follows renames."""

@@ -128,12 +128,17 @@ checkout → uv sync
 - [x] **M2** `tf.collect` / `tf.gate` / `daily.yml` 가동. 첫 스냅샷 `2026-11-20`
   - 소스 동기화는 **월요일(KST)에만** 실행(약 2.5분). 매일 수집은 node ID로 star만 조회(약 1.5분)
   - 레지스트리 내용이 바뀌지 않으면 커밋하지 않음
-- [ ] **M3** `tf.build` → `trending.json`
-- [ ] **M4** 페이지 (데이터가 며칠 쌓인 뒤 시안 비교)
-- [ ] **M5** discovery (Search API topic 쿼리, Trending 스크래핑)
-- [ ] **M6** README, 수동 태깅 정리
+- [x] **M3** `tf.build` → `trending.json` (7일 윈도우, 짧으면 가장 오래된 스냅샷 기준, 상승률, 신규)
+- [x] **M4** 정적 페이지 v1 (podium, 탭, 필터, sparkline) + 고정 OG 카드(`tools/make_og.py`)
+- [x] **M5** `tf.discover`: topic 검색과 Trending 스크래핑, **5k★ 이상만** 매일 자동 추가 (+401개)
+- [x] 파일 기반 태깅 `tf.probe`: `SKILL.md`/`skills/`→skill, `.claude-plugin/plugin.json`·`gemini-extension.json`→plugin,
+      `marketplace.json`은 plugin 3개 이상이면 marketplace(아니면 plugin)
+- [x] Pages를 Actions 배포로 전환. `trending.json`은 커밋하지 않음 (git 증가량 약 10MB/년)
+- [x] RSS(`feed.xml`, 최근 14일 일일 Top 10) + 주간 다이제스트(`data/digests/`, 월요일, GitHub Release로 발행해서 메일 알림)
+- [ ] README (스크린샷, 소개)
 
 ### 운영 메모
-- 소스 추가/제외: `data/sources.json`. 태그 수동 지정, 강제 포함, 차단: `data/overrides.json`
+- 소스 추가/제외: `data/sources.json` (`discovery`: 자동 발견 topic과 최소 star). 태그 수동 지정, 강제 포함, 차단: `data/overrides.json`
+- 다이제스트를 메일로 받기: 레포 Watch → Custom → Releases
 - 수동 실행: Actions → daily → Run workflow (`sync_sources` 체크 시 레지스트리 재동기화)
 - `astral-sh/setup-uv`는 메이저 태그가 없으므로 정확한 버전으로 고정할 것

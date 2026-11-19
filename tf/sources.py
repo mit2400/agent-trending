@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from .common import DATA, dump, load, now_iso, today
 from .gh import GitHub, topics
+from .probe import probe
 
 LINK = re.compile(r"(?<![\w.])github\.com/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/([A-Za-z0-9_.-]{1,100})")
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
@@ -50,6 +51,20 @@ GENERIC_TYPES = {"agent", "tool", "learning"}
 def normalize_types(types: set[str]) -> set[str]:
     """Union of many lists over-tags; drop generic labels when a specific one exists."""
     return types - GENERIC_TYPES if types & SPECIFIC_TYPES else types
+
+
+def manual_tags(ov: dict) -> dict[str, dict]:
+    return {k.lower(): v for k, v in {**ov.get("include", {}), **ov.get("tags", {})}.items()}
+
+
+def apply_files(repos: dict[str, dict], manual: dict[str, dict]) -> None:
+    for e in repos.values():
+        if e["name"].lower() in manual:
+            continue
+        types = set(e["tags"].get("type", [])) | set(e.get("files", []))
+        e["tags"]["type"] = sorted(normalize_types(types))
+        if not e["tags"].get("scope"):
+            e["tags"]["scope"] = ["general"]
 
 
 @dataclass
@@ -164,7 +179,7 @@ def sync(dry_run: bool = False) -> dict:
     print(f"resolving {len(names)} repos …", file=sys.stderr)
     nodes = gh.repos_by_name(names)
 
-    manual = {k.lower(): v for k, v in {**ov.get("include", {}), **ov.get("tags", {})}.items()}
+    manual = manual_tags(ov)
     forced = {k.lower() for k in ov.get("include", {})}
     stats = defaultdict(int)
     seen: set[str] = set()
@@ -212,6 +227,9 @@ def sync(dry_run: bool = False) -> dict:
         entry["tags"] = {k: sorted(v) for k, v in tags.items()}
         repos[rid] = entry
 
+    probed = probe(gh, repos)
+    print(f"probed {probed} new repos for marker files", file=sys.stderr)
+    apply_files(repos, manual)
     repos = dict(sorted(repos.items(), key=lambda kv: kv[1]["name"].lower()))
     changed = repos != before
     registry = {"updated": now_iso() if changed else registry.get("updated", now_iso()), "count": len(repos), "repos": repos}
