@@ -1,0 +1,41 @@
+{
+  "min_stars": 10,
+  "skip_sections": [
+    "sponsor", "contribut", "license", "table of contents", "changelog", "star history",
+    "developed by", "security notice", "legend", "tutorial", "community$", "subscribe",
+    "videos?", "podcast", "blog", "survey", "paper", "thanks", "quality", "what is mcp"
+  ],
+  "section_rules": [
+    { "match": "\\bsub-?agents?\\b", "type": "subagent" },
+    { "match": "\\bskills?\\b", "type": "skill" },
+    { "match": "\\bmcp\\b|model context protocol", "type": "mcp" },
+    { "match": "\\bplugins?\\b", "type": "plugin" },
+    { "match": "marketplaces?", "type": "marketplace" },
+    { "match": "frameworks?|\\bsdks?\\b|development kits", "type": "framework" },
+    { "match": "clients?|\\bguis?\\b|\\bides?\\b|editors?|alternative", "type": "client" },
+    { "match": "orchestration|coding agents|agent collections|multi-agent", "type": "agent" },
+    { "match": "\\blists?\\b|collections|related|reference repo|other repos", "type": "list" },
+    { "match": "guides?|learning|documentation|tips|concepts|best practice", "type": "learning" },
+    { "match": "tools?|utilit|\\bcli\\b|status lines?|observability|monitor|usage", "type": "tool" }
+  ],
+  "sources": [
+    { "repo": "shanraisshan/claude-code-best-practice", "tags": { "scope": ["claude-code"] } },
+    { "repo": "hesreallyhim/awesome-claude-code",       "tags": { "scope": ["claude-code"] } },
+    { "repo": "jqueryscript/awesome-claude-code",       "tags": { "scope": ["claude-code"] } },
+    { "repo": "VoltAgent/awesome-claude-code-subagents", "tags": { "scope": ["claude-code"], "type": ["subagent"] } },
+    { "repo": "composio-community/awesome-claude-plugins", "tags": { "scope": ["claude-code"], "type": ["plugin"] } },
+    { "repo": "travisvn/awesome-claude-skills",         "tags": { "scope": ["claude-code"], "type": ["skill"] } },
+    { "repo": "ComposioHQ/awesome-claude-skills",       "tags": { "scope": ["claude-code"], "type": ["skill"] } },
+    { "repo": "VoltAgent/awesome-agent-skills",         "tags": { "scope": ["general"], "type": ["skill"] } },
+    { "repo": "punkpeye/awesome-mcp-servers",           "tags": { "scope": ["general"], "type": ["mcp"] },
+      "skip_sections": ["^clients$", "remote servers"] },
+    { "repo": "wong2/awesome-mcp-servers",              "tags": { "scope": ["general"], "type": ["mcp"] } },
+    { "repo": "e2b-dev/awesome-ai-agents", "section_rules": false,              "tags": { "scope": ["general"], "type": ["agent"] } },
+    { "repo": "kyrolabs/awesome-agents",                "tags": { "scope": ["general"] } },
+    { "repo": "slavakurilyak/awesome-ai-agents", "section_rules": false,        "tags": { "scope": ["general"], "type": ["agent"] } },
+    { "repo": "Jenqyang/Awesome-AI-Agents",             "tags": { "scope": ["general"] } },
+    { "repo": "ashishpatel26/500-AI-Agents-Projects",   "tags": { "scope": ["general"] } },
+    { "repo": "ai-for-developers/awesome-ai-coding-tools", "tags": { "scope": ["general"] } },
+    { "repo": "filipecalegario/awesome-vibe-coding",    "tags": { "scope": ["general"] } }
+  ]
+}
