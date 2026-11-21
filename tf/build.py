@@ -67,6 +67,8 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
 
     registry = load(DATA / "registry.json")["repos"]
     pushed = load(DATA / "activity.json", {}).get("pushed", {})
+    # skills.sh skills published from each tracked repo (written by `tf.skills build`, if present)
+    repo_skills = (load(DATA / "skills.json") or {}).get("by_repo", {})
     cur_stars = latest["stars"]
     out = []
     for rid, e in registry.items():
@@ -97,6 +99,7 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
             "window": wd,
             "spark": [n for _, n in series],
             "new": created_recently or joined_recently,
+            **({"skills": repo_skills[e["name"]]} if e["name"] in repo_skills else {}),
         })
     out.sort(key=lambda r: (r["delta"] is None, -(r["delta"] or 0), -r["stars"]))
 

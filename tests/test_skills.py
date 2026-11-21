@@ -1,0 +1,203 @@
+from __future__ import annotations
+
+import json
+
+import httpx
+import pytest
+
+from tf import skills as sk
+
+A = "o/skills|alpha"
+B = "o/skills|beta"
+C = "x.dev|gamma/sub"     # non-GitHub source, skillId with a slash
+
+
+# ---------------------------------------------------------------- fetch
+def api(pages: dict[tuple[str, int], list], total: dict[str, int], fail: dict | None = None):
+    """Fake skills.sh: pages[(view, n)] = rows; fail[(view, n)] = list of status codes to return first."""
+    fail = {k: list(v) for k, v in (fail or {}).items()}
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        _, _, _, view, page = req.url.path.split("/")
+        k = (view, int(page))
+        calls.append(k)
+        if fail.get(k):
+            code = fail[k].pop(0)
+            return httpx.Response(code, headers={"retry-after": "7"} if code == 429 else {})
+        rows = pages.get(k, [])
+        more = (view, int(page) + 1) in pages
+        return httpx.Response(200, json={"skills": rows, "total": total[view], "hasMore": more, "page": int(page)})
+
+    return httpx.Client(transport=httpx.MockTransport(handler)), calls
+
+
+def row(src, sid, n, **kw):
+    return {"source": src, "skillId": sid, "name": kw.pop("name", sid), "installs": n, **kw}
+
+
+def test_fetch_pages_dedupes_and_retries_429():
+    pages = {("all-time", 0): [row("o/skills", "alpha", 50), row("o/skills", "beta", 40)],
+             ("all-time", 1): [row("o/skills", "beta", 40), row("x.dev", "gamma/sub", 30)]}
+    client, calls = api(pages, {"all-time": 3}, fail={("all-time", 1): [429, 503]})
+    waits = []
+    rows, total = sk.fetch_view(client, "all-time", delay=2, sleep=waits.append)
+    assert [sk.key(r["source"], r["skillId"]) for r in rows] == [A, B, C]
+    assert total == 3
+    assert waits == [2, 7, sk.BACKOFF[1]]  # page gap, Retry-After header, then backoff
+    assert calls == [("all-time", 0), ("all-time", 1), ("all-time", 1), ("all-time", 1)]
+
+
+def test_fetch_fails_on_low_coverage():
+    client, _ = api({("trending", 0): [row("o/skills", "alpha", 5)]}, {"trending": 100})
+    with pytest.raises(RuntimeError, match="1 of 100"):
+        sk.fetch_view(client, "trending", sleep=lambda s: None)
+
+
+def test_fetch_gives_up_after_retries():
+    client, _ = api({("trending", 0): []}, {"trending": 1}, fail={("trending", 0): [429] * 10})
+    with pytest.raises(httpx.HTTPStatusError):
+        sk.fetch_view(client, "trending", sleep=lambda s: None)
+
+
+def test_collect_writes_raw_skips_existing_and_prunes(tmp_path):
+    raw = tmp_path / "raw"
+    old = sk.raw_path(raw, "all-time", "2026-10-01")
+    sk.write_gz(old, {"date": "2026-10-01"})
+    pages = {("all-time", 0): [row("o/skills", "alpha", 50, isOfficial=True), row("o/skills", "beta", 40, name="Beta!")],
+             ("trending", 0): [row("o/skills", "beta", 9), row("o/skills", "alpha", 3)]}
+    client, calls = api(pages, {"all-time": 2, "trending": 2})
+    sk.collect("2026-11-22", raw, client=client, sleep=lambda s: None)
+    a = sk.read_gz(sk.raw_path(raw, "all-time", "2026-11-22"))
+    t = sk.read_gz(sk.raw_path(raw, "trending", "2026-11-22"))
+    assert a["installs"] == {A: 50, B: 40} and a["official"] == [A] and a["names"] == {B: "Beta!"}
+    assert t["order"] == [[B, 9], [A, 3]]
+    assert not old.exists()
+    sk.collect("2026-11-22", raw, client=client, sleep=lambda s: None)
+    assert len(calls) == 2  # second run reuses today's files
+
+
+# ---------------------------------------------------------------- build
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    data = tmp_path / "data"
+    (data / "snapshots").mkdir(parents=True)
+    (data / "registry.json").write_text(json.dumps({"repos": {"R_1": {"name": "O/Skills", "tags": {}}}}))
+    (data / "snapshots" / "2026-11-22.json").write_text(json.dumps({"stars": {"R_1": 1234}}))
+    monkeypatch.setattr(sk, "DATA", data)
+    monkeypatch.setattr(sk, "SNAPSHOTS", data / "snapshots")
+    monkeypatch.setattr(sk, "OUT", data / "skills.json")
+    monkeypatch.setattr(sk, "TREND_CUT", 2)
+    raw, snaps = tmp_path / "raw", data / "skills"
+
+    def day(date, installs, trending):
+        sk.write_gz(sk.raw_path(raw, "all-time", date),
+                    {"date": date, "collected_at": f"{date}T15:00:00Z", "installs": installs, "official": [A]})
+        sk.write_gz(sk.raw_path(raw, "trending", date),
+                    {"date": date, "collected_at": f"{date}T15:01:00Z", "order": trending})
+    return raw, snaps, day
+
+
+def by_key(t):
+    return {r["k"]: r for r in t["skills"]}
+
+
+def test_first_day_has_no_history(env):
+    raw, snaps, day = env
+    day("2026-11-20", {A: 100, B: 50}, [[B, 9], [A, 5], [C, 1]])
+    t = sk.build(raw=raw, snaps=snaps, write=False)
+    rs = by_key(t)
+    assert t["has_history"] is False and t["moves"] == []
+    assert rs[A]["delta"] is None and rs[A]["ar"] == 1 and rs[B]["tr"] == 1
+    assert C not in rs  # rank 3 is outside the trending cut of 2
+
+
+def test_deltas_ranks_moves_and_streaks(env):
+    raw, snaps, day = env
+    day("2026-11-20", {A: 100, B: 50}, [[B, 9], [A, 5], [C, 1]])
+    day("2026-11-21", {A: 110, B: 80}, [[B, 9], [A, 5], [C, 2]])
+    day("2026-11-22", {A: 115, B: 140}, [[C, 30], [B, 20], [A, 4]])
+    t = sk.build(raw=raw, snaps=snaps, write=False)
+    rs = by_key(t)
+    assert (rs[A]["delta"], rs[A]["d1"], rs[A]["window"], rs[A]["spark"]) == (15, 5, 2, [100, 110, 115])
+    assert (rs[B]["delta"], rs[B]["rate"]) == (90, 1.8)
+    assert (rs[B]["ar"], rs[B]["par"], rs[A]["ar"], rs[A]["par"]) == (1, 2, 2, 1)
+    # C: trending-only (not on the all-time board), entered the cut today
+    assert rs[C]["tr"] == 1 and "ptr" not in rs[C] and rs[C]["installs"] is None and rs[C]["t24"] == 30
+    assert rs[B]["streak"] == 3 and rs[C]["streak"] == 1
+    assert (rs[A].get("tr"), rs[A]["ptr"]) == (None, 2)  # left trending today
+    today = t["moves"][0]
+    assert today["date"] == "2026-11-22" and today["from"] == "2026-11-21"
+    assert today["in"] == [{"k": C, "r": 1, "t": 30}]
+    assert today["out"] == [{"k": A, "r": 2, "t": 5, "d": 2}]
+    assert t["moves"][1]["in"] == [] and t["moves"][1]["out"] == []
+    assert rs[A]["official"] is True and rs[A]["repo"] == "O/Skills" and rs[A]["stars"] == 1234
+    assert C in rs and not rs[C]["gh"] and rs[A]["gh"]
+    assert t["by_repo"] == {"O/Skills": {"n": 2, "installs": 255}}
+    assert t["totals"]["tracked"] == 3 and t["totals"]["window_installs"] == 105
+
+
+def test_streak_breaks_on_missing_day(env):
+    raw, snaps, day = env
+    day("2026-11-19", {A: 1}, [[A, 5]])
+    day("2026-11-21", {A: 2}, [[A, 5]])
+    day("2026-11-22", {A: 3}, [[A, 5]])
+    assert by_key(sk.build(raw=raw, snaps=snaps, write=False))[A]["streak"] == 2
+
+
+def test_display_snapshot_backfills_lost_raw(env):
+    raw, snaps, day = env
+    day("2026-11-21", {A: 100, B: 50}, [[A, 5], [B, 4], [C, 1]])
+    sk.build(raw=raw, snaps=snaps, write=False, snapshot=True)
+    snap = json.loads((snaps / "2026-11-21.json").read_text())
+    assert snap["installs"] == {A: 100, B: 50} and snap["trending"] == [[A, 5], [B, 4]]
+    for p in (raw / "all-time").glob("*"):   # the skills-raw branch was lost
+        p.unlink()
+    for p in (raw / "trending").glob("*"):
+        p.unlink()
+    day("2026-11-22", {A: 130, B: 51}, [[A, 5], [B, 4]])
+    rs = by_key(sk.build(raw=raw, snaps=snaps, write=False))
+    assert (rs[A]["delta"], rs[A]["window"]) == (30, 1)
+    assert "par" not in rs[A]  # partial days don't give all-time ranks
+
+
+def test_prune_keeps_last_30_days(tmp_path):
+    for d in ("2026-10-23", "2026-10-24", "2026-11-22"):
+        sk.write_gz(sk.raw_path(tmp_path, "trending", d), {})
+    gone = sk.prune(tmp_path, "2026-11-22")
+    assert [p.name for p in gone] == ["2026-10-23.json.gz"]
+
+
+# ---------------------------------------------------------------- gate
+@pytest.fixture
+def gated(env, monkeypatch):
+    from tf import gate as g
+    raw, snaps, day = env
+    porcelain = {"out": ""}
+    monkeypatch.setattr(g, "git", lambda *a: porcelain["out"] if a[0] == "status" else "")
+    many = {f"o/s|k{i}": 1000 for i in range(200)}
+    day("2026-11-21", many, [["o/s|k1", 5]])
+    return raw, snaps, day, many, porcelain
+
+
+def test_gate_passes_healthy_run(gated):
+    raw, snaps, day, many, _ = gated
+    day("2026-11-22", {k: n + 10 for k, n in many.items()}, [["o/s|k1", 5]])
+    sk.build(raw=raw, snaps=snaps, snapshot=True)
+    assert sk.check("2026-11-22", raw, snaps) == ([], [])
+
+
+def test_gate_fails_on_shrunk_list_and_outside_changes(gated):
+    raw, snaps, day, many, porcelain = gated
+    day("2026-11-22", dict(list(many.items())[:150]), [["o/s|k1", 5]])
+    sk.build(raw=raw, snaps=snaps, snapshot=True)
+    porcelain["out"] = "?? data/skills/2026-11-22.json\n M tf/skills.py\n"
+    errors, _ = sk.check("2026-11-22", raw, snaps)
+    assert any("count fell 200 -> 150" in e for e in errors)
+    assert any("outside data/" in e for e in errors)
+
+
+def test_gate_fails_without_todays_raw(gated):
+    raw, snaps, *_ = gated
+    errors, _ = sk.check("2026-11-22", raw, snaps)
+    assert any("raw all-time snapshot" in e for e in errors)

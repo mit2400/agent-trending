@@ -11,3 +11,7 @@ __pycache__/
 .env
 .preview/
 data/trending.json
+
+# skills.sh raw snapshots (skills-raw branch checkout) and built page data
+raw/
+data/skills.json

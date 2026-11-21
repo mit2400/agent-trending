@@ -108,8 +108,74 @@ jobs:
             --title "Daily data run failed: $(date +%F)" \
             --body "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-  deploy:
+  skills:
+    # skills.sh installs. Runs after the repo data is pushed and fails independently of it:
+    # a skills.sh outage opens its own issue and the site still deploys with the last skills data.
     needs: collect
+    if: ${{ !cancelled() && github.event_name != 'push' && !inputs.deploy_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main            # include the repo data commit from the collect job
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv sync --frozen
+
+      - name: Restore raw skill snapshots (skills-raw branch)
+        run: |
+          mkdir -p raw
+          if git fetch --depth 1 origin skills-raw; then
+            git archive FETCH_HEAD | tar -x -C raw
+          else
+            echo "no skills-raw branch yet; starting fresh"
+          fi
+
+      - name: Collect skills.sh (all-time + trending, ~100 paced requests)
+        run: uv run python -m tf.skills collect
+
+      - name: Build skills.json and today's display snapshot
+        run: uv run python -m tf.skills build --snapshot
+
+      - name: Gate
+        run: uv run python -m tf.skills gate
+
+      - name: Push raw snapshots (skills-raw = one commit holding the last 30 days)
+        run: |
+          cd raw
+          git init -q -b skills-raw
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "raw: $(date +%F)"
+          git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:skills-raw
+
+      - name: Commit display snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/skills
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "skills: $(date +%F)"
+          git pull --rebase -q origin main
+          git push
+
+      - name: Open issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create skills-gate --color 7A5CF0 --description "Daily skills.sh run failed" 2>/dev/null || true
+          gh issue create --label skills-gate \
+            --title "Daily skills run failed: $(date +%F)" \
+            --body "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  deploy:
+    needs: [collect, skills]
     if: ${{ !cancelled() && needs.collect.result != 'failure' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -119,9 +185,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main            # pick up the data commit pushed by the collect job
+          ref: main            # pick up the data commits pushed by the collect and skills jobs
       - uses: astral-sh/setup-uv@v10.3.3
       - run: uv sync --frozen
+
+      - name: Restore raw skill snapshots (skills-raw branch)
+        run: |
+          mkdir -p raw
+          git fetch --depth 1 origin skills-raw && git archive FETCH_HEAD | tar -x -C raw || echo "no skills-raw branch"
 
       - name: Build site
         id: build
@@ -130,12 +201,16 @@ jobs:
             echo "no snapshots yet; keeping the current deployment"
             exit 0
           fi
+          if compgen -G "raw/all-time/*.json.gz" > /dev/null || compgen -G "data/skills/*.json" > /dev/null; then
+            uv run python -m tf.skills build   # before tf.build: repo rows link to their skills
+          fi
           uv run python -m tf.build
           mkdir -p _site/data
           cp -r index.html assets _site/
           v=$(git rev-parse --short HEAD)
           sed -i "s#assets/app.js#assets/app.js?v=$v#; s#assets/style.css#assets/style.css?v=$v#" _site/index.html
           cp data/trending.json _site/data/
+          if [ -f data/skills.json ]; then cp data/skills.json _site/data/; fi
           uv run python -m tf.publish feed --out _site/feed.xml
           echo "ok=true" >> "$GITHUB_OUTPUT"
 

@@ -13,7 +13,16 @@ Agent Trending tracks about a thousand established repos around AI agents (Claud
 - ✨ **New**: repos created in the last 30 days, or that joined the tracked set this week
 - ⭐ **All-time**: total stars
 
-You can filter every view by **type** (MCP, Skills, Plugins, Marketplaces, Agents, Frameworks, …) and **ecosystem** (Claude Code, Codex, Cursor, Gemini CLI, General), search by name, and share a filtered view: the URL keeps your tab and filters.
+A second board, **Skills** (toggle at the top of the page, or [`?view=skills`](https://mit2400.github.io/agent-trending/?view=skills)), tracks install counts of agent skills from [skills.sh](https://skills.sh) the same way:
+
+- 🔥 **Top gains** / 📈 **Fastest growing**: installs gained over the last 7 days
+- ⚡ **Trending 24h**: skills.sh's 24-hour list, with each skill's rank change since yesterday
+- 🔀 **In & out**: skills that entered or left the trending top 300 today, this week or this month
+- ⭐ **All-time**: total installs
+
+Repos that publish skills link to them, and skills link back to their source repo.
+
+You can filter every repo view by **type** (MCP, Skills, Plugins, Marketplaces, Agents, Frameworks, …) and **ecosystem** (Claude Code, Codex, Cursor, Gemini CLI, General), search by name, and share a filtered view: the URL keeps your tab and filters.
 
 ---
 
@@ -63,6 +72,14 @@ Tagging is rule-based (no LLM), so a few repos are untagged or tagged loosely.
 - When less than a week of history exists (right after launch, or for a repo that joined recently), the oldest snapshot available is used instead. The page then shows the shorter window next to the number, for example `+40 · 2d`.
 - **Fastest growing** divides the gain by the star count at the start of the window.
 
+### Skills
+
+**Every skill on the skills.sh leaderboards is tracked**, about 13,500 a day: the all-time list (about 9,900 skills) plus the 24-hour trending list (about 9,950, including new skills not yet on the all-time list). They are read from the public JSON that skills.sh's own leaderboard page loads, about 100 paged requests a day spaced 2 seconds apart.
+
+- **Gain** is today's all-time install count minus the count 7 days ago, like stars. Skills that are only on the trending list have no all-time count; they show their 24-hour installs.
+- **Trending** means the top 300 of skills.sh's 24-hour list. A skill enters or leaves it on the first day it crosses that line.
+- Install counts are skills.sh's CLI telemetry, taken as reported.
+
 ---
 
 ## How it works
@@ -98,7 +115,11 @@ Everything runs in one GitHub Actions workflow, [`.github/workflows/daily.yml`](
 
 When it fails, nothing is committed and an issue is opened automatically.
 
+**Skills** run as a separate job after the repo data is committed, so a skills.sh outage never blocks the repo board. It has its own gate (today's list must have at least 95% of yesterday's skills, no mass install drops) and opens its own `skills-gate` issue.
+
 **What is committed:** only the raw data: the registry, one small snapshot per day and `activity.json` (last push date per repo, overwritten daily) (about 30 KB compressed, about 10 MB per year). The rankings (`trending.json`) and the RSS feed are rebuilt from the snapshots on every deploy and are never committed.
+
+For skills, the full daily lists (about 210 KB a day compressed) are too big to keep in `main`'s history. They live on the **`skills-raw`** branch, which always holds exactly one commit with the last 30 days and is force-pushed daily, so it never grows. `main` only gets the skills shown on the page each day (`data/skills/YYYY-MM-DD.json`, about 20 KB), which also serves as fallback history if `skills-raw` is ever lost. `skills.json` is rebuilt on every deploy.
 
 ---
 
@@ -111,6 +132,7 @@ tf/                           Python package
   discover.py                 GitHub topics + Trending (repos, developers)
   probe.py                    type tags from files in each repo
   collect.py                  daily star snapshot
+  skills.py                   skills.sh: collect, build skills.json, gate
   build.py                    rankings → trending.json
   gate.py                     data checks before committing
   publish.py                  RSS feed + weekly digest
@@ -121,6 +143,8 @@ data/
   registry.json               tracked repos (one per line)
   snapshots/YYYY-MM-DD.json   {repo id: stars} for each day
   activity.json               {repo id: last push date}, overwritten each run
+  skills/YYYY-MM-DD.json      skills shown on the page that day (+ trending top 300)
+raw/                          skills-raw branch checkout (gitignored): all-time/ and trending/ *.json.gz
   digests/YYYY-Www.md         weekly digests
 index.html, assets/           the static page (no build step, no framework)
 tools/make_og.py              regenerates the social card (assets/og.png)
@@ -172,6 +196,10 @@ uv run python -m tf.discover              # topics + trending (--trending-only, 
 uv run python -m tf.collect               # today's snapshot
 uv run python -m tf.build                 # data/trending.json
 uv run python -m tf.gate                  # the checks the workflow runs
+
+git fetch origin skills-raw && mkdir -p raw && git archive FETCH_HEAD | tar -x -C raw
+uv run python -m tf.skills collect        # today's skills.sh lists into raw/ (about 5 min)
+uv run python -m tf.skills build          # data/skills.json (run before tf.build)
 uv run python -m tf.publish feed --out feed.xml
 uv run python -m tf.publish digest --force
 
@@ -186,4 +214,4 @@ uv run python -m tf.build --snapshots .preview/snapshots --preview
 
 ---
 
-Data comes from the public GitHub API. Star counts are taken as reported, and repos are not checked for star manipulation.
+Data comes from the public GitHub API and skills.sh. Star counts are taken as reported, and repos are not checked for star manipulation.
