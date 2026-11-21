@@ -211,7 +211,7 @@ h1 { font: 700 clamp(30px, 5.4vw, 52px)/1.05 var(--display); letter-spacing: -.0
   .podium .card:not(:first-child) .card-head { padding-right: 0; flex: 1; }
   .head { display: none; }
   .row {
-    grid-template-columns: 28px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(28px, auto) minmax(0, 1fr) auto;
     grid-template-areas: "rank repo metric" "rank repo trend";
     row-gap: 4px; padding: 12px 0;
   }
@@ -304,6 +304,6 @@ h1 { font: 700 clamp(30px, 5.4vw, 52px)/1.05 var(--display); letter-spacing: -.0
 .foot .skills-how { margin-top: 10px; }
 .foot .skills-how a { color: var(--accent); }
 .tag.ght { background: var(--gold); color: var(--surface); }
-.rg { font: 500 10px var(--mono); color: var(--muted); }
 .foot .follow-h { margin-top: 24px; }
 .card .rank-badge.off { color: var(--muted); }  /* gold only for the real #1 on a filtered board */
+.rank.long { font-size: 11px; }

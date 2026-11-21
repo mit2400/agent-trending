@@ -220,3 +220,14 @@ def test_tracked_repo_skills_ship_as_extras(env, monkeypatch):
     assert D in rs and rs[D]["x"] == 1               # listed for the repo's "N skills" link
     assert "x" not in rs[A] and "x" not in rs[B]      # on a board
     assert "z/z|q" not in rs                          # untracked source, off every board
+
+
+def test_each_tab_has_its_own_rank_over_all_skills(env, monkeypatch):
+    raw, day = env
+    D = "o/skills|delta"
+    day("2026-11-21", {A: 100_000, B: 2_000, D: 1_000}, [[B, 9]])
+    day("2026-11-22", {A: 100_500, B: 3_000, D: 1_400}, [[B, 9]])
+    rs = by_key(sk.build(raw=raw, write=False))
+    assert [rs[k]["gr"] for k in (B, A, D)] == [1, 2, 3]        # by installs gained
+    assert [rs[k]["rr"] for k in (B, D, A)] == [1, 2, 3]        # by % growth
+    assert [rs[k]["ar"] for k in (A, B, D)] == [1, 2, 3]        # by total installs

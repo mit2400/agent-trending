@@ -282,10 +282,13 @@ def build(date: str | None = None, raw: Path = RAW, write: bool = True, preview:
             "spark": [v for _, v in series],
         }
 
+    # each tab ranks the whole set on its own measure; the page shows these ranks even when filtered
     gainers = sorted((k for k, s in stats.items() if s["delta"]), key=lambda k: (-stats[k]["delta"], k))
     risers = sorted((k for k, s in stats.items() if s["rate"] and s["rate"] > 0 and s["base"] >= RATE_MIN_BASE),
                     key=lambda k: (-stats[k]["rate"], k))
     boards = set(gainers[:TOP]) | set(risers[:TOP]) | set(sorted(rank_all, key=lambda k: rank_all[k])[:TOP]) | set(cut)
+    gain_rank = {k: i + 1 for i, k in enumerate(gainers)}
+    rate_rank = {k: i + 1 for i, k in enumerate(risers)}
     repos = repo_index()
     # every skill of a tracked repo is shipped too, so a repo's "N skills" link lists all N;
     # those rows carry "x" and stay out of the unfiltered boards
@@ -304,6 +307,7 @@ def build(date: str | None = None, raw: Path = RAW, write: bool = True, preview:
             "installs": s.get("installs"), "base": s.get("base"), "delta": s.get("delta"),
             "rate": s.get("rate"), "window": s.get("window"), "d1": s.get("d1"), "spark": s.get("spark"),
             "ar": rank_all.get(k), "par": prev_rank_all.get(k),
+            "gr": gain_rank.get(k), "rr": rate_rank.get(k),
             "tr": cut.get(k), "ptr": prev_cut.get(k) if prev else None, "t24": t24.get(k),
             "streak": streak_back(days, len(days) - 1, k) if k in cut else 0,
             "repo": repo["name"] if repo else None, "stars": repo["stars"] if repo else None,
@@ -311,7 +315,7 @@ def build(date: str | None = None, raw: Path = RAW, write: bool = True, preview:
         })
     rows.sort(key=lambda r: (r["delta"] is None, -(r["delta"] or 0), -(r["installs"] or 0), r["k"]))
     for r in rows:  # drop nulls/falsy flags to keep the payload small
-        for f in ("name", "official", "repo", "stars", "par", "ptr", "tr", "t24", "d1", "x"):
+        for f in ("name", "official", "repo", "stars", "par", "ptr", "tr", "t24", "d1", "x", "gr", "rr"):
             if r[f] is None:
                 del r[f]
 

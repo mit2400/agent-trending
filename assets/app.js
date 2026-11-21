@@ -217,7 +217,7 @@
     setHead("Repository", "Stars", hasDeltas ? `${TABS.repos[state.tab].metric} (${windowLabel(curWindow())})` : "Gain");
     $("list").innerHTML = shown.map((r, i) => `
       <li class="row">
-        <span class="rank">${r.rank}</span>
+        <span class="rank${r.rank >= 1000 ? " long" : ""}">${r.rank}</span>
         <div class="repo">
           ${avatar(r.name.split("/")[0], 32)}
           <div class="repo-body">
@@ -274,10 +274,8 @@
     const rs = sdata.skills.filter((s) => (narrowed || !s.x) && sameSource(s.src) && matchesQ(q, s.id, s.name, s.src));
     const has = sdata.has_history;
     const tab = !has && (state.tab === "gain" || state.tab === "rate") ? "alltime" : state.tab;
-    if (tab === "trending") return rs.filter((s) => s.tr != null).sort((a, b) => a.tr - b.tr);
-    if (tab === "rate") return rs.filter((s) => s.rate > 0 && s.base >= sdata.rate_min_base).sort((a, b) => b.rate - a.rate);
-    if (tab === "alltime") return rs.filter((s) => s.ar != null).sort((a, b) => a.ar - b.ar);
-    return rs.filter((s) => s.delta != null && s.delta > 0).sort((a, b) => b.delta - a.delta || (a.ar ?? 1e9) - (b.ar ?? 1e9));
+    const f = RANK_FIELD[tab];
+    return rs.filter((s) => s[f] != null).sort((a, b) => a[f] - b[f]);
   }
   function skillBadges(s) {
     const b = [];
@@ -300,12 +298,12 @@
     const sub = s.d1 != null && tab === "gain" && !sdata.preview ? `+${nf.format(s.d1)} today${win ? ` · ${win}` : ""}` : win;
     return `${deltaHTML(s.delta)}${sub ? `<span class="sub">${sub}</span>` : ""}`;
   }
-  // Position in the list as shown; on a filtered list the skills.sh-wide rank is added underneath.
-  function skillRank(s, i, tab) {
-    const [g, pg] = tab === "trending" ? [s.tr, s.ptr] : tab === "alltime" ? [s.ar, s.par] : [null, null];
-    if (g == null) return `${i + 1}`;
-    const global = g !== i + 1 ? `<span class="rg" title="Rank on skills.sh">#${g}</span>` : "";
-    return `${i + 1}${global}${rankChange(g, pg)}`;
+  // Each tab has its own ranking over every skill (computed at build time); filters keep it.
+  const RANK_FIELD = { gain: "gr", rate: "rr", trending: "tr", alltime: "ar" };
+  const PREV_RANK_FIELD = { trending: "ptr", alltime: "par" };
+  function skillRank(s, tab) {
+    const prev = PREV_RANK_FIELD[tab];
+    return `${s[RANK_FIELD[tab]]}${prev ? rankChange(s[RANK_FIELD[tab]], s[prev]) : ""}`;
   }
   function skillPodiumBig(s, tab) {
     if (tab === "trending") return `${cf.format(s.t24)}<small>installs · 24h</small>`;
@@ -323,7 +321,7 @@
     const podium = !state.q && rs.length >= 3 ? rs.slice(0, 3) : [];
     $("podium").innerHTML = podium.map((s, i) => `
       <a class="card" href="${esc(skillURL(s))}" target="_blank" rel="noopener">
-        <span class="rank-badge">#${i + 1}</span>
+        <span class="rank-badge${s[RANK_FIELD[tab]] === 1 ? "" : " off"}">#${s[RANK_FIELD[tab]]}</span>
         <div class="card-head">${skillAvatar(s, 28)}<span class="name">${esc(skillName(s))}</span></div>
         <div class="big">${skillPodiumBig(s, tab)}</div>
         <p class="desc">${esc(s.src)}${s.official ? " · official" : ""}</p>
@@ -333,7 +331,7 @@
     setHead("Skill", "Installs", sdata.has_history || tab === "trending" ? metric : "Gain");
     $("list").innerHTML = rs.slice(0, state.limit).map((s, i) => `
       <li class="row">
-        <span class="rank">${skillRank(s, i, tab)}</span>
+        <span class="rank${s[RANK_FIELD[tab]] >= 1000 ? " long" : ""}">${skillRank(s, tab)}</span>
         <div class="repo">
           ${skillAvatar(s, 32)}
           <div class="repo-body">
