@@ -16,6 +16,10 @@ A skill's key is "source|skillId" (both parts may contain "/").
 Usage:
   uv run python -m tf.skills collect [--date D] [--force]   fetch both lists into raw/, prune old days
   uv run python -m tf.skills build [--date D] [--snapshot]  write data/skills.json (+ display snapshot)
+  uv run python -m tf.skills build --preview-dir preview/skills
+                                                           same, but while production has fewer than two
+                                                           days, build from two manual test collections
+                                                           instead and mark the page as preview
   uv run python -m tf.skills gate [--date D]                validate before the daily commit
 """
 
@@ -258,7 +262,7 @@ def repo_index() -> dict[str, dict]:
 
 
 def build(date: str | None = None, raw: Path = RAW, snaps: Path = SKILL_SNAPS, write: bool = True,
-          snapshot: bool = False) -> dict:
+          snapshot: bool = False, preview: bool = False) -> dict:
     dates = available_dates(raw, snaps, date)
     if not dates:
         raise SystemExit(f"no skill snapshots in {raw} or {snaps}")
@@ -330,9 +334,11 @@ def build(date: str | None = None, raw: Path = RAW, snaps: Path = SKILL_SNAPS, w
         "date": date,
         "collected_at": cur.collected_at,
         "partial": cur.partial,
+        "preview": preview,
         "window_max": WINDOW,
         "tracking_start": dates[0],
         "baseline_date": window[0].date,
+        "baseline_collected_at": window[0].collected_at,
         "window_dates": [d.date for d in window],  # spark arrays are right-aligned to these
         "has_history": has_history,
         "trend_cut": TREND_CUT,
@@ -371,6 +377,13 @@ def write_display_snapshot(day: Day, keys: set[str], snaps: Path) -> Path:
         "names": {k: v for k, v in day.names.items() if k in keep},
     }, compact=True)
     return path
+
+
+def use_preview(raw: Path, snaps: Path, preview_dir: Path | None) -> bool:
+    """Deploy preview data until production has two days to compare."""
+    if not preview_dir:
+        return False
+    return len(available_dates(raw, snaps, None)) < 2 and len(available_dates(preview_dir, preview_dir / "-", None)) >= 2
 
 
 # ---------------------------------------------------------------- gate
@@ -427,11 +440,16 @@ if __name__ == "__main__":
     ap.add_argument("--raw", type=Path, default=RAW)
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--snapshot", action="store_true", help="also write the display snapshot to data/skills/")
+    ap.add_argument("--preview-dir", type=Path, help="raw-layout test collections to use until production has 2 days")
     a = ap.parse_args()
     if a.cmd == "collect":
         collect(a.date or today(), a.raw, a.force)
     elif a.cmd == "build":
-        build(a.date, a.raw, snapshot=a.snapshot)
+        if use_preview(a.raw, SKILL_SNAPS, a.preview_dir):
+            print(f"fewer than 2 production days; building preview data from {a.preview_dir}", file=sys.stderr)
+            build(a.date, a.preview_dir, a.preview_dir / "-", preview=True)
+        else:
+            build(a.date, a.raw, snapshot=a.snapshot)
     else:
         d = a.date or today()
         errors, warns = check(d, a.raw)

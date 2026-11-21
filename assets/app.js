@@ -74,6 +74,10 @@
   const span = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
   const curWindow = () => span(data.baseline_date, data.date);
   const skillWindow = () => span(sdata.baseline_date, sdata.date);
+  // preview data = two manual collections minutes apart, labelled by the real time between them
+  const skillWin = (days) => sdata.preview
+    ? `${Math.round((Date.parse(sdata.collected_at) - Date.parse(sdata.baseline_collected_at)) / 60000)}m`
+    : `${days}d`;
   function windowLabel(days) {
     if (state.view === "repos" && data && data.preview) {
       const mins = Math.round((Date.parse(data.latest_collected_at) - Date.parse(data.baseline_collected_at)) / 60000);
@@ -265,7 +269,7 @@
     const b = [];
     if (s.official) b.push(`<span class="tag official" title="Marked official on skills.sh">official</span>`);
     if (s.tr != null && s.ptr == null && hasMoves()) b.push(`<span class="tag in">entered trending</span>`);
-    else if (s.tr != null && s.streak > 1) b.push(`<span class="tag streak" title="Days in the trending top ${sdata.trend_cut}">trending · ${s.streak}d</span>`);
+    else if (s.tr != null && s.streak > 1 && !sdata.preview) b.push(`<span class="tag streak" title="Days in the trending top ${sdata.trend_cut}">trending · ${s.streak}d</span>`);
     if (s.tr == null && s.ptr != null) b.push(`<span class="tag out">left trending</span>`);
     if (s.repo) b.push(`<button class="tag link" data-goto-repo="${esc(s.repo)}" title="Open ${esc(s.repo)} on the Repos board">★ ${cf.format(s.stars ?? 0)}</button>`);
     return b.join("");
@@ -276,10 +280,10 @@
       : `<span class="src">${esc(s.src)}</span>`;
   }
   function skillMetricHTML(s, tab) {
-    const win = s.window && s.window !== skillWindow() ? `${s.window}d` : "";
+    const win = s.window && s.window !== skillWindow() && !sdata.preview ? skillWin(s.window) : "";
     if (tab === "trending") return `${nf.format(s.t24)}<span class="sub">installs · 24h</span>`;
     if (tab === "rate") return `<span class="arrow up" aria-hidden="true">▲</span>${pct(s.rate)}<span class="sub">+${nf.format(s.delta)}${win ? ` · ${win}` : ""}</span>`;
-    const sub = s.d1 != null && tab === "gain" ? `+${nf.format(s.d1)} today${win ? ` · ${win}` : ""}` : win;
+    const sub = s.d1 != null && tab === "gain" && !sdata.preview ? `+${nf.format(s.d1)} today${win ? ` · ${win}` : ""}` : win;
     return `${deltaHTML(s.delta)}${sub ? `<span class="sub">${sub}</span>` : ""}`;
   }
   function skillRank(s, i, tab) {
@@ -289,9 +293,9 @@
   }
   function skillPodiumBig(s, tab) {
     if (tab === "trending") return `${cf.format(s.t24)}<small>installs · 24h</small>`;
-    if (tab === "alltime") return `${cf.format(s.installs)}<small>${s.delta ? `${deltaHTML(s.delta)} · ${s.window}d` : "installs"}</small>`;
-    if (tab === "rate") return `${pct(s.rate)}<small>growth · ${s.window}d</small>`;
-    return `${deltaHTML(s.delta)}<small>installs · ${s.window}d</small>`;
+    if (tab === "alltime") return `${cf.format(s.installs)}<small>${s.delta ? `${deltaHTML(s.delta)} · ${skillWin(s.window)}` : "installs"}</small>`;
+    if (tab === "rate") return `${pct(s.rate)}<small>growth · ${skillWin(s.window)}</small>`;
+    return `${deltaHTML(s.delta)}<small>installs · ${skillWin(s.window)}</small>`;
   }
   function renderSkills() {
     const tab = !sdata.has_history && (state.tab === "gain" || state.tab === "rate") ? "alltime" : state.tab;
@@ -309,7 +313,7 @@
         <p class="desc">${esc(s.src)}${s.official ? " · official" : ""}</p>
         ${spark(s.spark, 280, 44)}
       </a>`).join("");
-    const metric = tab === "trending" ? "24h installs" : `${TABS.skills[tab].metric} (${skillWindow()}d)`;
+    const metric = tab === "trending" ? "24h installs" : `${TABS.skills[tab].metric} (${skillWin(skillWindow())})`;
     setHead("Skill", "Installs", sdata.has_history || tab === "trending" ? metric : "Gain");
     $("list").innerHTML = rs.slice(0, state.limit).map((s, i) => `
       <li class="row">
@@ -369,24 +373,19 @@
   }
 
   function renderPulse() {
-    const t = sdata.totals;
     const today = sdata.moves[0];
     const riser = sdata.skills.filter((s) => s.rate > 0 && s.base >= sdata.rate_min_base).sort((a, b) => b.rate - a.rate)[0];
     const names = (xs) => xs.slice(0, 3).map((m) => esc(skillName(lookup(m.k)))).join(", ");
-    const cards = [
-      sdata.has_history
-        ? `<button class="stat" data-go="gain"><span class="k">Installs · ${skillWindow()}d</span><span class="v">+${cf.format(t.window_installs)}</span><span class="s">across ${nf.format(t.all_time)} all-time skills</span></button>`
-        : `<button class="stat" data-go="alltime"><span class="k">All-time installs</span><span class="v">${cf.format(t.installs)}</span><span class="s">across ${nf.format(t.all_time)} skills</span></button>`,
-      `<button class="stat" data-go="trending"><span class="k">Installs · 24h</span><span class="v">${cf.format(t.installs_24h)}</span><span class="s">${nf.format(t.trending)} skills installed today</span></button>`,
-    ];
+    const cards = [];
     if (today) {
       cards.push(`<button class="stat in" data-go="moves"><span class="k">Entered trending</span><span class="v">+${today.in.length}</span><span class="s">${names(today.in) || "none today"}</span></button>`);
       cards.push(`<button class="stat out" data-go="moves"><span class="k">Left trending</span><span class="v">−${today.out.length}</span><span class="s">${names(today.out) || "none today"}</span></button>`);
-    } else if (riser) {
-      cards.push(`<button class="stat" data-go="rate"><span class="k">Fastest growing</span><span class="v small">${esc(skillName(riser))}</span><span class="s">▲${pct(riser.rate)} in ${riser.window}d</span></button>`);
+    }
+    if (riser) {
+      cards.push(`<button class="stat" data-go="rate"><span class="k">Fastest growing</span><span class="v small">${esc(skillName(riser))}</span><span class="s">▲${pct(riser.rate)} in ${skillWin(riser.window)}</span></button>`);
     }
     $("pulse").innerHTML = cards.join("");
-    $("pulse").hidden = false;
+    $("pulse").hidden = !cards.length;
   }
 
   function renderSkillsChrome() {
@@ -403,11 +402,12 @@
     $("meta").innerHTML = [
       `<span class="live">Updated <b>${esc(kst(sdata.collected_at))} KST</b></span>`,
       `<span><b>${nf.format(sdata.totals.tracked)}</b> skills tracked</span>`,
-      `<span>Window <b>${skillWindow()}d</b></span>`,
+      sdata.has_history ? `<span>Window <b>${skillWin(skillWindow())}</b></span>` : "",
       `<span>Data from <a href="https://skills.sh" target="_blank" rel="noopener"><b>skills.sh</b></a></span>`,
     ].join("");
     let msg = "";
-    if (!sdata.has_history) msg = "Collecting the first baseline — install gains appear after the next daily run (around 00:00 KST). Showing all-time installs meanwhile.";
+    if (sdata.preview) msg = `Preview data: gains below come from two skills.sh collections taken ${skillWin(skillWindow())} apart. Daily collection runs around 00:00 KST.`;
+    else if (!sdata.has_history) msg = "Collecting the first baseline — install gains appear after the next daily run (around 00:00 KST). Showing all-time installs meanwhile.";
     else if (skillWindow() < sdata.window_max) msg = `Tracking started ${fmtDate(sdata.tracking_start)}: gains are measured over the ${skillWindow()} day(s) collected so far until a full 7-day window exists.`;
     if (sdata.partial) msg = `${msg ? msg + " " : ""}Today's full skills.sh list was unavailable; numbers come from a partial snapshot.`;
     notice(msg);

@@ -201,3 +201,17 @@ def test_gate_fails_without_todays_raw(gated):
     raw, snaps, *_ = gated
     errors, _ = sk.check("2026-11-22", raw, snaps)
     assert any("raw all-time snapshot" in e for e in errors)
+
+
+def test_preview_until_two_production_days(env):
+    raw, snaps, day = env
+    prev_dir = raw.parent / "preview"
+    for d, n in (("2026-11-20", 100), ("2026-11-21", 130)):
+        sk.write_gz(sk.raw_path(prev_dir, "all-time", d), {"date": d, "collected_at": f"{d}T19:00:00Z", "installs": {A: n}})
+    assert sk.use_preview(raw, snaps, None) is False
+    day("2026-11-22", {A: 140}, [[A, 5]])
+    assert sk.use_preview(raw, snaps, prev_dir) is True      # production has 1 day
+    t = sk.build(raw=prev_dir, snaps=prev_dir / "-", write=False, preview=True)
+    assert t["preview"] and t["baseline_collected_at"] == "2026-11-20T19:00:00Z" and by_key(t)[A]["delta"] == 30
+    day("2026-11-23", {A: 150}, [[A, 5]])
+    assert sk.use_preview(raw, snaps, prev_dir) is False     # production takes over

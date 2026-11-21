@@ -119,7 +119,7 @@ When it fails, nothing is committed and an issue is opened automatically.
 
 **What is committed:** only the raw data: the registry, one small snapshot per day and `activity.json` (last push date per repo, overwritten daily) (about 30 KB compressed, about 10 MB per year). The rankings (`trending.json`) and the RSS feed are rebuilt from the snapshots on every deploy and are never committed.
 
-For skills, the full daily lists (about 210 KB a day compressed) are too big to keep in `main`'s history. They live on the **`skills-raw`** branch, which always holds exactly one commit with the last 30 days and is force-pushed daily, so it never grows. `main` only gets the skills shown on the page each day (`data/skills/YYYY-MM-DD.json`, about 20 KB), which also serves as fallback history if `skills-raw` is ever lost. `skills.json` is rebuilt on every deploy.
+For skills, the full daily lists (about 210 KB a day compressed) are too big to keep in `main`'s history. They live on the **`skills-raw`** branch, which always holds exactly one commit with the last 30 days and is force-pushed daily, so it never grows. `main` only gets the skills shown on the page each day (`data/skills/YYYY-MM-DD.json`, about 20 KB), which also serves as fallback history if `skills-raw` is ever lost. `skills.json` is rebuilt on every deploy. Until production has two days to compare, the deploy builds the Skills board from `preview/skills/` instead: two real collections taken 48 minutes apart, labelled as preview on the page.
 
 ---
 
