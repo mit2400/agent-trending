@@ -24,7 +24,7 @@ Repos that publish skills link to them, and skills link back to their source rep
 
 Repos that are on today's [GitHub Trending](https://github.com/trending) page get a **GitHub Trending · Nth** badge: how many days they have been on it since Nov 22, 2026, when logging began (`data/gh-trending.json`).
 
-You can filter every repo view by **type** (MCP, Skills, Plugins, Marketplaces, Agents, Frameworks, …) and **ecosystem** (Claude Code, Codex, Cursor, Gemini CLI, General), search by name or description, and share a filtered view: the URL keeps your tab and filters.
+You can filter every repo view by **type** (MCP, Skills, Plugins, Marketplaces, Agents, Frameworks, …), search by name or description, and share a filtered view: the URL keeps your tab and filters.
 
 ---
 
@@ -61,7 +61,7 @@ The footer of the page lists every source, with how many tracked repos each one 
   | `.claude-plugin/plugin.json` or `gemini-extension.json` | plugin |
   | `.claude-plugin/marketplace.json` listing 3 or more plugins | marketplace (fewer than 3 → plugin) |
 
-- **Ecosystem** comes from the list a repo was found in and from topics such as `claude-code`, `codex`, `cursor` and `gemini-cli`.
+- **Ecosystem** comes from the list a repo was found in and from topics such as `claude-code`, `codex`, `cursor` and `gemini-cli`. It is still recorded in `registry.json` but no longer shown on the page, since most agent tools now work across clients.
 
 Tagging is rule-based (no LLM), so a few repos are untagged or tagged loosely.
 

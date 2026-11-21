@@ -6,9 +6,6 @@
     mcp: "MCP", skill: "Skills", plugin: "Plugins", marketplace: "Marketplaces", subagent: "Subagents",
     agent: "Agents", framework: "Frameworks", client: "Clients", tool: "Tools", list: "Lists", learning: "Learning",
   };
-  const SCOPE_LABEL = {
-    general: "General", "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor", "gemini-cli": "Gemini CLI",
-  };
   const TABS = {
     repos: {
       delta: { label: "🔥 Top gains", metric: "Gain" },
@@ -50,7 +47,6 @@
     view: view0,
     tab: TABS[view0][params.get("tab")] ? params.get("tab") : DEFAULT_TAB[view0],
     type: params.get("type") || "all",
-    scope: params.get("scope") || "all",
     source: params.get("source") || "all",
     days: [1, 7, 30].includes(+params.get("days")) ? +params.get("days") : 1,
     q: params.get("q") || "",
@@ -187,15 +183,13 @@
     const q = state.q.trim().toLowerCase();
     return boardRepos().map((r, i) => Object.assign(r, { rank: i + 1 })).filter((r) =>
       (state.type === "all" || r.type.includes(state.type)) &&
-      (state.scope === "all" || r.scope.includes(state.scope)) &&
       (!q || r.name.toLowerCase().includes(q) || (r.desc || "").toLowerCase().includes(q)));
   }
   function repoTagsHTML(r) {
     const t = r.type.map((x) => `<button class="tag" data-type="${esc(x)}">${esc(TYPE_LABEL[x] || x)}</button>`);
-    const s = r.scope.filter((x) => x !== "general").map((x) => `<button class="tag scope" data-scope="${esc(x)}">${esc(SCOPE_LABEL[x] || x)}</button>`);
     const sk = r.skills ? `<button class="tag skills" data-goto-skills="${esc(r.name)}" title="Open this repo's skills on the Skills board">⬇ ${nf.format(r.skills.n)} skill${r.skills.n > 1 ? "s" : ""} · ${cf.format(r.skills.installs)}</button>` : "";
     const gt = r.ght ? `<span class="tag ght" title="On today's GitHub Trending page, for the ${ordinal(r.ght)} time since ${fmtDate(data.gh_trending_since || data.tracking_start)}">GitHub Trending · ${ordinal(r.ght)}</span>` : "";
-    return (r.new ? `<span class="tag new">new</span>` : "") + gt + t.join("") + s.join("") + sk;
+    return (r.new ? `<span class="tag new">new</span>` : "") + gt + t.join("") + sk;
   }
   function repoPodiumBig(r) {
     if (state.tab === "alltime") return `★ ${cf.format(r.stars)}<small>${r.delta ? `${deltaHTML(r.delta)} · ${windowLabel(r.window)}` : "stars"}</small>`;
@@ -238,8 +232,7 @@
       `<button class="chip" data-${attr}="${esc(val)}" aria-pressed="${String(state[attr] === val)}">${esc(label)}${n != null ? `<span class="n">${nf.format(n)}</span>` : ""}</button>`;
     $("type-chips").innerHTML = chip("type", "all", "All types", data.count) +
       Object.entries(data.counts.type).map(([k, n]) => chip("type", k, TYPE_LABEL[k] || k, n)).join("");
-    $("scope-chips").innerHTML = chip("scope", "all", "All ecosystems") +
-      Object.keys(data.counts.scope).map((k) => chip("scope", k, SCOPE_LABEL[k] || k)).join("");
+    $("period-chips").innerHTML = "";
     $("meta").innerHTML = [
       `<span class="live">Updated <b>${esc(kst(data.latest_collected_at))} KST</b></span>`,
       `<span><b>${nf.format(data.count)}</b> repos tracked</span>`,
@@ -393,7 +386,7 @@
     const on = (v) => String(v.toLowerCase() === state.source.toLowerCase());
     $("type-chips").innerHTML = `<button class="chip" data-source="all" aria-pressed="${on("all")}">All sources<span class="n">${nf.format(sdata.skills.filter((s) => !s.x).length)}</span></button>` +
       top.map((k) => `<button class="chip" data-source="${esc(k)}" aria-pressed="${on(k)}">${esc(k)}${counts.get(k) ? `<span class="n">${counts.get(k)}</span>` : ""}</button>`).join("");
-    $("scope-chips").innerHTML = state.tab === "moves"
+    $("period-chips").innerHTML = state.tab === "moves"
       ? [[1, "Today"], [7, "7 days"], [30, "30 days"]].map(([d, l]) => `<button class="chip" data-days="${d}" aria-pressed="${String(state.days === d)}">${l}</button>`).join("")
       : "";
     $("meta").innerHTML = [
@@ -461,7 +454,6 @@
     } else {
       if (state.tab !== "delta") p.set("tab", state.tab);
       if (state.type !== "all") p.set("type", state.type);
-      if (state.scope !== "all") p.set("scope", state.scope);
     }
     if (state.q) p.set("q", state.q);
     const qs = p.toString();
@@ -521,10 +513,9 @@
       else switchView("repos", { q: g.dataset.gotoRepo });
       return;
     }
-    const t = e.target.closest("[data-type],[data-scope],[data-source],[data-days]");
+    const t = e.target.closest("[data-type],[data-source],[data-days]");
     if (!t || t.closest("#tabs")) return;
     if (t.dataset.type) state.type = t.dataset.type === state.type && t.classList.contains("tag") ? "all" : t.dataset.type;
-    if (t.dataset.scope) state.scope = t.dataset.scope === state.scope && t.classList.contains("tag") ? "all" : t.dataset.scope;
     if (t.dataset.source) state.source = t.dataset.source;
     if (t.dataset.days) state.days = +t.dataset.days;
     state.limit = PAGE; render();
