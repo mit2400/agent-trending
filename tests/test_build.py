@@ -76,3 +76,12 @@ def test_sorted_by_delta(env):
     snap("2026-11-01", {"R_old": 100, "R_late": 10})
     snap("2026-11-02", {"R_old": 101, "R_late": 60})
     assert [r["name"] for r in b.build(snaps)["repos"]] == ["a/late", "a/old"]
+
+
+def test_pushed_flows_from_activity(env):
+    snaps, snap = env
+    snap("2026-11-01", {"R_old": 100, "R_late": 50})
+    assert by_name(b.build(snaps, write=False))["a/old"]["pushed"] is None
+    (b.DATA / "activity.json").write_text(json.dumps({"updated": "x", "pushed": {"R_old": "2026-10-30"}}))
+    t = by_name(b.build(snaps, write=False))
+    assert t["a/old"]["pushed"] == "2026-10-30" and t["a/late"]["pushed"] is None

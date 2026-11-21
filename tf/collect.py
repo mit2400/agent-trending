@@ -12,7 +12,7 @@ import sys
 from .common import DATA, SNAPSHOTS, dump, load, now_iso, today
 from .gh import GitHub
 
-LIGHT_FIELDS = "id stargazerCount"
+LIGHT_FIELDS = "id stargazerCount pushedAt"
 
 
 def collect(date: str, force: bool = False) -> dict:
@@ -29,6 +29,8 @@ def collect(date: str, force: bool = False) -> dict:
     missing = sorted(rid for rid, n in nodes.items() if not n)
     snap = {"date": date, "collected_at": now_iso(), "stars": stars, "missing": missing}
     dump(path, snap, compact=True)
+    pushed = {rid: n["pushedAt"][:10] for rid, n in nodes.items() if n and n.get("pushedAt")}
+    dump(DATA / "activity.json", {"updated": now_iso(), "pushed": pushed}, compact=True)
     print(f"{path.name}: {len(stars)} repos, {len(missing)} missing", file=sys.stderr)
     return snap
 

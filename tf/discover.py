@@ -51,11 +51,19 @@ def search_topic(gh: GitHub, topic: str, min_stars: int) -> list[dict]:
     return out
 
 
+def parse_trending(html: str) -> list[str]:
+    return list(dict.fromkeys(TRENDING_LINK.findall(html)))
+
+
+def parse_trending_devs(html: str) -> list[str]:
+    return list(dict.fromkeys(DEV_POPULAR.findall(html)))
+
+
 def trending_names(since: str) -> list[str]:
     r = httpx.get(f"https://github.com/trending?since={since}", headers={"User-Agent": "agent-trending"},
                   timeout=30, follow_redirects=True)
     r.raise_for_status()
-    return list(dict.fromkeys(TRENDING_LINK.findall(r.text)))
+    return parse_trending(r.text)
 
 
 def trending_dev_repos(since: str) -> list[str]:
@@ -63,7 +71,7 @@ def trending_dev_repos(since: str) -> list[str]:
     r = httpx.get(f"https://github.com/trending/developers?since={since}", headers={"User-Agent": "agent-trending"},
                   timeout=30, follow_redirects=True)
     r.raise_for_status()
-    return list(dict.fromkeys(DEV_POPULAR.findall(r.text)))
+    return parse_trending_devs(r.text)
 
 
 def discover(dry_run: bool = False, since: list[str] | None = None, topics_on: bool = True,
@@ -98,18 +106,26 @@ def discover(dry_run: bool = False, since: list[str] | None = None, topics_on: b
 
     kw = re.compile(cfg["trending"]["keywords"], re.I)
     names: list[str] = []
+    fetched = 0
     for period in since or cfg["trending"]["since"]:
         try:
             names += trending_names(period)
+            fetched += 1
         except Exception as e:  # scraping is best-effort
             print(f"  ! trending {period}: {e}", file=sys.stderr)
+    if fetched and not names:
+        print("::warning::github.com/trending parsed 0 repos — markup may have changed")
     origin = {n: "discover:trending" for n in names}
     dev_names: list[str] = []
+    dev_fetched = 0
     for period in dev_since or cfg["trending"].get("developers_since", []):
         try:
             dev_names += trending_dev_repos(period)
+            dev_fetched += 1
         except Exception as e:
             print(f"  ! trending developers {period}: {e}", file=sys.stderr)
+    if dev_fetched and not dev_names:
+        print("::warning::github.com/trending/developers parsed 0 repos — markup may have changed")
     for n in dev_names:
         origin.setdefault(n, "discover:trending-dev")
     print(f"  trending developers: {len(set(dev_names))} popular repos listed", file=sys.stderr)

@@ -109,6 +109,18 @@
     tip.hidden = false;
   });
   document.addEventListener("scroll", () => { tip.hidden = true; }, { passive: true });
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const ago = (d, ref) => {
+    const n = Math.max(0, Math.round((Date.parse(ref) - Date.parse(d)) / 864e5));
+    return n < 1 ? "today" : n < 30 ? `${n}d ago` : n < 365 ? `${Math.floor(n / 30)}mo ago` : `${Math.floor(n / 365)}y ago`;
+  };
+  function activityHTML(r) {
+    const stale = r.pushed && (Date.parse(data.date) - Date.parse(r.pushed)) / 864e5 > 180;
+    const c = r.created ? `created ${MONTHS[+r.created.slice(5, 7) - 1]} ${r.created.slice(0, 4)}` : "";
+    const u = r.pushed ? `<span${stale ? ' class="stale" title="No pushes in 6+ months"' : ""}>updated ${ago(r.pushed, data.date)}</span>` : "";
+    const line = [c, u].filter(Boolean).join(" · ");
+    return line ? `<p class="activity">${line}</p>` : "";
+  }
   const fmtDate = (d) => new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
   /* ---------- filtering ---------- */
@@ -167,6 +179,7 @@
             <a class="name" href="https://github.com/${esc(r.name)}" target="_blank" rel="noopener">${nameHTML(r.name)}</a>
             ${r.desc ? `<p class="desc" title="${esc(r.desc)}">${esc(r.desc)}</p>` : ""}
             <div class="tags">${tagsHTML(r)}</div>
+            ${activityHTML(r)}
           </div>
         </div>
         <span class="num stars">★ ${cf.format(r.stars)}</span>
@@ -213,10 +226,10 @@
     const n = $("notice");
     if (data.preview) {
       n.hidden = false;
-      n.textContent = `Preview data: rankings below come from two test snapshots taken ${windowLabel(1)} apart. Daily collection starts at 08:30 KST.`;
+      n.textContent = `Preview data: rankings below come from two test snapshots taken ${windowLabel(1)} apart. Daily collection runs around 00:00 KST.`;
     } else if (!hasDeltas) {
       n.hidden = false;
-      n.textContent = "Collecting the first baseline — growth rankings appear after the next daily run (08:30 KST). Showing all-time stars meanwhile.";
+      n.textContent = "Collecting the first baseline — growth rankings appear after the next daily run (around 00:00 KST). Showing all-time stars meanwhile.";
     } else if (curWindow() < data.window_max) {
       n.hidden = false;
       n.textContent = `Tracking started ${fmtDate(data.tracking_start)}: growth is measured over the ${curWindow()} day(s) collected so far until a full 7-day window exists.`;

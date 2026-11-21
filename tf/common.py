@@ -13,7 +13,7 @@ KST = ZoneInfo("Asia/Seoul")
 
 
 def today() -> str:
-    """Collection date in KST (the daily run fires at 08:47 KST)."""
+    """Collection date in KST (the daily run fires around 00:00 KST, possibly delayed by hours)."""
     return dt.datetime.now(KST).date().isoformat()
 
 

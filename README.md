@@ -1,6 +1,6 @@
 # Agent Trending
 
-**What's rising in the AI agent ecosystem.** Agents, MCP servers, skills, plugins, marketplaces & AI tools — ranked by GitHub star growth, refreshed every morning.
+**What's rising in the AI agent ecosystem.** Agents, MCP servers, skills, plugins, marketplaces & AI tools — ranked by GitHub star growth, refreshed daily.
 
 [![Agent Trending](assets/og.png)](https://mit2400.github.io/agent-trending/)
 
@@ -58,7 +58,7 @@ Tagging is rule-based (no LLM), so a few repos are untagged or tagged loosely.
 
 ## How the ranking works
 
-- Every day at **08:30 KST** the star count of every tracked repo is saved as a snapshot.
+- Every day around **00:00 KST** (GitHub may delay scheduled runs by a few hours) the star count of every tracked repo is saved as a snapshot.
 - A repo's **gain** is today's stars minus its stars **7 days ago**.
 - When less than a week of history exists (right after launch, or for a repo that joined recently), the oldest snapshot available is used instead. The page then shows the shorter window next to the number, for example `+40 · 2d`.
 - **Fastest growing** divides the gain by the star count at the start of the window.
@@ -98,7 +98,7 @@ Everything runs in one GitHub Actions workflow, [`.github/workflows/daily.yml`](
 
 When it fails, nothing is committed and an issue is opened automatically.
 
-**What is committed:** only the raw data: the registry and one small snapshot per day (about 30 KB compressed, about 10 MB per year). The rankings (`trending.json`) and the RSS feed are rebuilt from the snapshots on every deploy and are never committed.
+**What is committed:** only the raw data: the registry, one small snapshot per day and `activity.json` (last push date per repo, overwritten daily) (about 30 KB compressed, about 10 MB per year). The rankings (`trending.json`) and the RSS feed are rebuilt from the snapshots on every deploy and are never committed.
 
 ---
 
@@ -120,6 +120,7 @@ data/
   overrides.json              manual picks, tag overrides, blocklist
   registry.json               tracked repos (one per line)
   snapshots/YYYY-MM-DD.json   {repo id: stars} for each day
+  activity.json               {repo id: last push date}, overwritten each run
   digests/YYYY-Www.md         weekly digests
 index.html, assets/           the static page (no build step, no framework)
 tools/make_og.py              regenerates the social card (assets/og.png)

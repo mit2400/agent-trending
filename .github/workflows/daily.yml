@@ -2,7 +2,7 @@ name: daily
 
 on:
   schedule:
-    - cron: "30 23 * * *"   # 08:30 KST
+    - cron: "0 15 * * *"   # 00:00 KST (GitHub may delay scheduled runs by hours)
   workflow_dispatch:
     inputs:
       sync_sources:

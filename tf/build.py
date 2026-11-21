@@ -66,6 +66,7 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
     first_seen = set(load(files[0])["stars"])  # repos present when tracking began
 
     registry = load(DATA / "registry.json")["repos"]
+    pushed = load(DATA / "activity.json", {}).get("pushed", {})
     cur_stars = latest["stars"]
     out = []
     for rid, e in registry.items():
@@ -88,6 +89,7 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
             "type": e["tags"].get("type", []),
             "scope": e["tags"].get("scope", []),
             "created": e["created"],
+            "pushed": pushed.get(rid),
             "stars": stars,
             "base": base,
             "delta": delta,
