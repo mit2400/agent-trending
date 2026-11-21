@@ -18,7 +18,6 @@ on:
     paths: ["index.html", "assets/**", "tf/**", "preview/**", "pyproject.toml", ".github/workflows/daily.yml"]
 
 permissions:
-  actions: read          # list this run's artifacts (Pages artifact wait)
   contents: write
   issues: write
   pages: write
@@ -160,7 +159,7 @@ jobs:
     timeout-minutes: 15
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy2.outputs.page_url || steps.deploy3.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -195,20 +194,24 @@ jobs:
         with:
           path: _site
 
-      # deploy-pages looks the artifact up right after upload; the listing can lag behind
-      # ("Found 0 artifact(s)" while the upload succeeded), so wait until it is visible.
-      - if: steps.build.outputs.ok == 'true'
-        name: Wait until the Pages artifact is listed
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for i in $(seq 30); do
-            n=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts?name=github-pages" --jq '.total_count' || echo 0)
-            if [ "$n" -ge 1 ]; then echo "listed after $(( (i - 1) * 2 ))s"; exit 0; fi
-            sleep 2
-          done
-          echo "::warning::github-pages artifact still not listed after 60s; trying to deploy anyway"
-
+      # deploy-pages sometimes reports "Found 0 artifact(s)" right after a successful upload
+      # (its artifact lookup lags; the REST listing already shows it). Retry twice, later each time.
       - if: steps.build.outputs.ok == 'true'
         id: deploy
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - if: steps.build.outputs.ok == 'true' && steps.deploy.outcome == 'failure'
+        run: sleep 30
+
+      - if: steps.build.outputs.ok == 'true' && steps.deploy.outcome == 'failure'
+        id: deploy2
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - if: steps.build.outputs.ok == 'true' && steps.deploy.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: sleep 90
+
+      - if: steps.build.outputs.ok == 'true' && steps.deploy.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        id: deploy3
         uses: actions/deploy-pages@v5
