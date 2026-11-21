@@ -251,7 +251,6 @@
     else if (!hasDeltas) msg = "Collecting the first baseline — growth rankings appear after the next daily run (around 00:00 KST). Showing all-time stars meanwhile.";
     else if (curWindow() < data.window_max) msg = `Tracking started ${fmtDate(data.tracking_start)}: growth is measured over the ${curWindow()} day(s) collected so far until a full 7-day window exists.`;
     notice(msg);
-    $("pulse").hidden = true;
   }
 
   /* ================================================================ skills */
@@ -386,22 +385,6 @@
     $("empty").hidden = true;
   }
 
-  function renderPulse() {
-    const today = sdata.moves[0];
-    const riser = sdata.skills.filter((s) => s.rate > 0 && s.base >= sdata.rate_min_base).sort((a, b) => b.rate - a.rate)[0];
-    const names = (xs) => xs.slice(0, 3).map((m) => esc(skillName(lookup(m.k)))).join(", ");
-    const cards = [];
-    if (today) {
-      cards.push(`<button class="stat in" data-go="moves"><span class="k">Entered trending</span><span class="v">+${today.in.length}</span><span class="s">${names(today.in) || "none today"}</span></button>`);
-      cards.push(`<button class="stat out" data-go="moves"><span class="k">Left trending</span><span class="v">−${today.out.length}</span><span class="s">${names(today.out) || "none today"}</span></button>`);
-    }
-    if (riser) {
-      cards.push(`<button class="stat" data-go="rate"><span class="k">Fastest growing</span><span class="v small">${esc(skillName(riser))}</span><span class="s">▲${pct(riser.rate)} in ${skillWin(riser.window)}</span></button>`);
-    }
-    $("pulse").innerHTML = cards.join("");
-    $("pulse").hidden = !cards.length;
-  }
-
   function renderSkillsChrome() {
     const counts = new Map();
     sdata.skills.forEach((s) => { if (!s.x) counts.set(s.src, (counts.get(s.src) || 0) + 1); });
@@ -424,7 +407,6 @@
     else if (!sdata.has_history) msg = "Collecting the first baseline — install gains appear after the next daily run (around 00:00 KST). Showing all-time installs meanwhile.";
     else if (skillWindow() < sdata.window_max) msg = `Tracking started ${fmtDate(sdata.tracking_start)}: gains are measured over the ${skillWindow()} day(s) collected so far until a full 7-day window exists.`;
     notice(msg);
-    renderPulse();
   }
 
   /* ================================================================ shared */
@@ -529,12 +511,6 @@
     const b = e.target.closest("button[data-tab]");
     if (!b) return;
     state.tab = b.dataset.tab; state.limit = PAGE; render();
-  });
-  $("pulse").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-go]");
-    if (!b) return;
-    state.tab = b.dataset.go; state.limit = PAGE; render();
-    document.querySelector(".controls").scrollIntoView({ behavior: "smooth" });
   });
   document.addEventListener("click", (e) => {
     const g = e.target.closest("[data-goto-skills],[data-goto-repo]");
