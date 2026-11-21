@@ -106,8 +106,8 @@ def test_first_day_has_no_history(env):
     day("2026-11-20", {A: 100, B: 50}, [[B, 9], [A, 5], [C, 1]])
     t = sk.build(raw=raw, write=False)
     rs = by_key(t)
-    assert t["has_history"] is False and t["moves"] == []
-    assert rs[A]["delta"] is None and rs[A]["ar"] == 1 and rs[B]["tr"] == 1
+    assert t["periods"] == [] and t["moves"] == []
+    assert "p" not in rs[A] and rs[A]["ar"] == 1 and rs[B]["tr"] == 1
     assert C not in rs  # rank 3 is outside the trending cut of 2
 
 
@@ -118,11 +118,12 @@ def test_deltas_ranks_moves_and_streaks(env):
     day("2026-11-22", {A: 115, B: 140}, [[C, 30], [B, 20], [A, 4]])
     t = sk.build(raw=raw, write=False)
     rs = by_key(t)
-    assert (rs[A]["delta"], rs[A]["d1"], rs[A]["window"], rs[A]["spark"]) == (15, 5, 2, [100, 110, 115])
-    assert (rs[B]["delta"], rs[B]["rate"]) == (90, 1.8)
+    assert t["periods"] == [1]
+    assert (rs[A]["p"]["1"]["d"], rs[A]["spark"]) == (5, [100, 110, 115])
+    assert (rs[B]["p"]["1"]["d"], rs[B]["p"]["1"]["r"]) == (60, 0.75)
     assert (rs[B]["ar"], rs[B]["par"], rs[A]["ar"], rs[A]["par"]) == (1, 2, 2, 1)
     # C: trending-only (not on the all-time board), entered the cut today
-    assert rs[C]["tr"] == 1 and "ptr" not in rs[C] and rs[C]["installs"] is None and rs[C]["t24"] == 30
+    assert rs[C]["tr"] == 1 and "ptr" not in rs[C] and "installs" not in rs[C] and rs[C]["t24"] == 30
     assert rs[B]["streak"] == 3 and rs[C]["streak"] == 1
     assert (rs[A].get("tr"), rs[A]["ptr"]) == (None, 2)  # left trending today
     today = t["moves"][0]
@@ -133,7 +134,7 @@ def test_deltas_ranks_moves_and_streaks(env):
     assert rs[A]["official"] is True and rs[A]["repo"] == "O/Skills" and rs[A]["stars"] == 1234
     assert C in rs and not rs[C]["gh"] and rs[A]["gh"]
     assert t["by_repo"] == {"O/Skills": {"n": 2, "installs": 255}}
-    assert t["totals"]["tracked"] == 3 and t["totals"]["window_installs"] == 105
+    assert t["totals"]["tracked"] == 3
 
 
 def test_streak_breaks_on_missing_day(env):
@@ -205,7 +206,7 @@ def test_preview_until_two_production_days(env, tmp_path):
     day("2026-11-22", {A: 140}, [[A, 5]])
     assert sk.use_preview(raw, prev_dir) is True      # production has 1 day
     t = sk.build(raw=prev_dir, write=False, preview=True)
-    assert t["preview"] and t["baseline_collected_at"] == "2026-11-20T15:00:00Z" and by_key(t)[A]["delta"] == 30
+    assert t["preview"] and t["prev_collected_at"] == "2026-11-20T15:00:00Z" and by_key(t)[A]["p"]["1"]["d"] == 30
     day("2026-11-23", {A: 150}, [[A, 5]])
     assert sk.use_preview(raw, prev_dir) is False     # production takes over
 
@@ -228,6 +229,6 @@ def test_each_tab_has_its_own_rank_over_all_skills(env, monkeypatch):
     day("2026-11-21", {A: 100_000, B: 2_000, D: 1_000}, [[B, 9]])
     day("2026-11-22", {A: 100_500, B: 3_000, D: 1_400}, [[B, 9]])
     rs = by_key(sk.build(raw=raw, write=False))
-    assert [rs[k]["gr"] for k in (B, A, D)] == [1, 2, 3]        # by installs gained
-    assert [rs[k]["rr"] for k in (B, D, A)] == [1, 2, 3]        # by % growth
+    assert [rs[k]["p"]["1"]["g"] for k in (B, A, D)] == [1, 2, 3]   # by installs gained
+    assert [rs[k]["p"]["1"]["q"] for k in (B, D, A)] == [1, 2, 3]   # by % growth
     assert [rs[k]["ar"] for k in (A, B, D)] == [1, 2, 3]        # by total installs

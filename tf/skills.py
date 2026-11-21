@@ -25,7 +25,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import json
 import re
 import sys
@@ -37,16 +36,16 @@ from typing import Callable
 import httpx
 
 from .common import DATA, SNAPSHOTS, dump, load, now_iso, today
+from .rank import PERIODS, SPARK_DAYS, add_periods, available_periods, ndays, ranks, shift, spark
 
 API = "https://skills.sh/api/skills/{view}/{page}"
 VIEWS = ("all-time", "trending")
 RAW = DATA / "skills-raw"
 OUT = DATA / "skills.json"
 
-READ_DAYS = 30          # build reads only this many recent days (history itself is never pruned)
+READ_DAYS = max(PERIODS)  # build reads only this many recent days (history itself is never pruned)
 TREND_CUT = 300         # "in trending" = top N of the 24h list (skills.sh's own first screen)
-TOP = 300               # rows per leaderboard tab
-WINDOW = 7
+TOP = 300               # rows per leaderboard tab and period
 RATE_MIN_BASE = 1000    # % ranking only considers skills with at least this many baseline installs
 
 DELAY = 2.0             # seconds between page requests
@@ -68,14 +67,6 @@ def key(source: str, skill_id: str) -> str:
 def split_key(k: str) -> tuple[str, str]:
     src, _, sid = k.partition("|")
     return src, sid
-
-
-def shift(date: str, days: int) -> str:
-    return (dt.date.fromisoformat(date) + dt.timedelta(days=days)).isoformat()
-
-
-def ndays(a: str, b: str) -> int:
-    return (dt.date.fromisoformat(b) - dt.date.fromisoformat(a)).days
 
 
 # ---------------------------------------------------------------- fetch
@@ -258,66 +249,48 @@ def build(date: str | None = None, raw: Path = RAW, write: bool = True, preview:
         raise SystemExit(f"no skill snapshots in {raw}")
     date = dates[-1]
     # only the last READ_DAYS days are read; older files stay in the repo as history
-    days = [d for d in (load_day(x, raw) for x in dates if x > shift(date, -READ_DAYS)) if d]
+    days = [d for d in (load_day(x, raw) for x in dates if x >= shift(date, -READ_DAYS)) if d]
     cur = days[-1]
     prev = days[-2] if len(days) > 1 else None
-    window = [d for d in days if d.date >= shift(date, -WINDOW)]
+    periods = available_periods(dates[0], date)
 
-    rank_all = {k: i + 1 for i, k in enumerate(sorted(cur.installs, key=lambda k: (-cur.installs[k], k)))}
-    prev_rank_all = ({k: i + 1 for i, k in enumerate(sorted(prev.installs, key=lambda k: (-prev.installs[k], k)))}
-                     if prev else {})
     t24: dict[str, int] = {k: n for k, n in cur.trending}
     cut, prev_cut = cur.cut, (prev.cut if prev else {})
+    series = {k: [(d.date, d.installs[k]) for d in days if k in d.installs] for k in cur.installs}
+    stats: dict[str, dict] = {k: {} for k in cur.installs}
+    add_periods(stats, series, date, periods, RATE_MIN_BASE, cur.installs)
+    rank_all = ranks(cur.installs)
+    prev_rank_all = ranks(prev.installs) if prev else {}
 
-    stats: dict[str, dict] = {}
-    for k, n in cur.installs.items():
-        series = [(d.date, d.installs[k]) for d in window if k in d.installs]
-        base_date, base = series[0]
-        wd = ndays(base_date, date)
-        delta = n - base if wd > 0 else None
-        stats[k] = {
-            "installs": n, "base": base, "delta": delta, "window": wd,
-            "rate": round(delta / base, 5) if delta is not None and base > 0 else None,
-            "d1": n - prev.installs[k] if prev and k in prev.installs else None,
-            "spark": [v for _, v in series],
-        }
-
-    # each tab ranks the whole set on its own measure; the page shows these ranks even when filtered
-    gainers = sorted((k for k, s in stats.items() if s["delta"]), key=lambda k: (-stats[k]["delta"], k))
-    risers = sorted((k for k, s in stats.items() if s["rate"] and s["rate"] > 0 and s["base"] >= RATE_MIN_BASE),
-                    key=lambda k: (-stats[k]["rate"], k))
-    boards = set(gainers[:TOP]) | set(risers[:TOP]) | set(sorted(rank_all, key=lambda k: rank_all[k])[:TOP]) | set(cut)
-    gain_rank = {k: i + 1 for i, k in enumerate(gainers)}
-    rate_rank = {k: i + 1 for i, k in enumerate(risers)}
+    # shipped: the top TOP of every board (each period's gains and growth, all-time, trending cut)
+    boards = set(sorted(rank_all, key=lambda k: rank_all[k])[:TOP]) | set(cut)
+    for k, st in stats.items():
+        if any(v.get(b, TOP + 1) <= TOP for v in st.get("p", {}).values() for b in ("g", "q")):
+            boards.add(k)
     repos = repo_index()
     # every skill of a tracked repo is shipped too, so a repo's "N skills" link lists all N;
     # those rows carry "x" and stay out of the unfiltered boards
     linked = {k for k in cur.installs if split_key(k)[0].lower() in repos} - boards
-    has_history = any(s["delta"] is not None for s in stats.values())
 
     rows = []
     for k in boards | linked:
         src, sid = split_key(k)
-        s = stats.get(k, {})
         repo = repos.get(src.lower())
-        rows.append({
+        row = {
             "k": k, "src": src, "id": sid, "name": cur.names.get(k),
             "gh": bool(GH_SOURCE.match(src)),
             "official": k in cur.official or None,
-            "installs": s.get("installs"), "base": s.get("base"), "delta": s.get("delta"),
-            "rate": s.get("rate"), "window": s.get("window"), "d1": s.get("d1"), "spark": s.get("spark"),
+            "installs": cur.installs.get(k),
             "ar": rank_all.get(k), "par": prev_rank_all.get(k),
-            "gr": gain_rank.get(k), "rr": rate_rank.get(k),
-            "tr": cut.get(k), "ptr": prev_cut.get(k) if prev else None, "t24": t24.get(k),
-            "streak": streak_back(days, len(days) - 1, k) if k in cut else 0,
+            "p": stats.get(k, {}).get("p"),
+            "spark": spark(series[k], date) if k in series else None,
+            "tr": cut.get(k), "ptr": prev_cut.get(k), "t24": t24.get(k),
+            "streak": streak_back(days, len(days) - 1, k) if k in cut else None,
             "repo": repo["name"] if repo else None, "stars": repo["stars"] if repo else None,
             "x": 1 if k in linked else None,
-        })
-    rows.sort(key=lambda r: (r["delta"] is None, -(r["delta"] or 0), -(r["installs"] or 0), r["k"]))
-    for r in rows:  # drop nulls/falsy flags to keep the payload small
-        for f in ("name", "official", "repo", "stars", "par", "ptr", "tr", "t24", "d1", "x", "gr", "rr"):
-            if r[f] is None:
-                del r[f]
+        }
+        rows.append({f: v for f, v in row.items() if v is not None})  # keep the payload small
+    rows.sort(key=lambda r: (r.get("ar") or 10**9, r["k"]))
 
     by_repo: dict[str, dict] = {}
     for k, n in cur.installs.items():
@@ -331,33 +304,23 @@ def build(date: str | None = None, raw: Path = RAW, write: bool = True, preview:
     out = {
         "generated_at": now_iso(),
         "date": date,
-        "collected_at": cur.collected_at,
         "preview": preview,
-        "window_max": WINDOW,
         "tracking_start": dates[0],
-        "baseline_date": window[0].date,
-        "baseline_collected_at": window[0].collected_at,
-        "window_dates": [d.date for d in window],  # spark arrays are right-aligned to these
-        "has_history": has_history,
+        "periods": periods,
+        "collected_at": cur.collected_at,
+        "prev_collected_at": prev.collected_at if prev else None,
+        "spark_dates": [d.date for d in days if d.date >= shift(date, -SPARK_DAYS)],
         "trend_cut": TREND_CUT,
-        "top": TOP,
         "rate_min_base": RATE_MIN_BASE,
-        "totals": {
-            "tracked": len(tracked),
-            "all_time": len(cur.installs),
-            "trending": len(t24),
-            "installs": sum(cur.installs.values()),
-            "window_installs": sum(s["delta"] or 0 for s in stats.values()) if has_history else None,
-            "installs_24h": sum(t24.values()),
-        },
+        "totals": {"tracked": len(tracked), "all_time": len(cur.installs), "trending": len(t24)},
         "by_repo": by_repo,
         "moves": moves(days, shift(date, -(READ_DAYS - 1))),
         "skills": rows,
     }
     if write:
         dump(OUT, out, compact=True)
-        print(f"skills.json: {len(rows)} shown of {len(tracked)} tracked, "
-              f"window {window[0].date}..{date}", file=sys.stderr)
+        print(f"skills.json: {len(rows)} shown of {len(tracked)} tracked, periods {periods}, "
+              f"{len(days)} days read", file=sys.stderr)
     return out
 
 

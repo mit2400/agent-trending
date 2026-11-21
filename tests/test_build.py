@@ -36,46 +36,59 @@ def by_name(t):
     return {r["name"]: r for r in t["repos"]}
 
 
-def test_single_snapshot_has_no_delta(env):
+def test_single_snapshot_has_no_periods(env):
     snaps, snap = env
     snap("2026-11-01", {"R_old": 100})
-    r = by_name(b.build(snaps))["a/old"]
-    assert r["delta"] is None and r["window"] == 0
+    t = b.build(snaps)
+    r = by_name(t)["a/old"]
+    assert t["periods"] == [] and r["p"] == {} and r["ar"] == 1
 
 
-def test_short_history_uses_oldest_snapshot(env):
+def test_periods_open_as_history_grows(env):
     snaps, snap = env
     snap("2026-11-01", {"R_old": 100})
     snap("2026-11-03", {"R_old": 130})
+    t = b.build(snaps)
+    r = by_name(t)["a/old"]
+    assert t["periods"] == [1]                      # 2 days of history: Today only, no 7d yet
+    assert r["p"] == {}                             # no snapshot yesterday: nothing to compare for Today
+    snap("2026-11-04", {"R_old": 135})
     r = by_name(b.build(snaps))["a/old"]
-    assert (r["delta"], r["window"], r["rate"]) == (30, 2, 0.3)
+    assert r["p"]["1"] == {"d": 5, "b": 130, "w": 1, "r": 0.03846, "g": 1, "q": 1}
 
 
-def test_full_window_uses_date_minus_7(env):
+def test_seven_day_period_uses_date_minus_7(env):
     snaps, snap = env
     for i, n in enumerate([100, 110, 120, 130, 140, 150, 160, 170, 180, 190]):
         snap(f"2026-11-{i + 1:02d}", {"R_old": n})
     t = b.build(snaps)
     r = by_name(t)["a/old"]
-    assert t["baseline_date"] == "2026-11-03"
-    assert (r["delta"], r["window"], len(r["spark"])) == (70, 7, 8)
+    assert t["periods"] == [1, 7]
+    assert (r["p"]["7"]["d"], r["p"]["7"]["w"], r["p"]["1"]["d"]) == (70, 7, 10)
+    assert len(r["spark"]) == 8 and t["spark_dates"][0] == "2026-11-03"
 
 
-def test_late_joiner_gets_own_window_and_new_flag(env):
+def test_late_joiner_gets_own_span_and_new_rank(env):
     snaps, snap = env
     snap("2026-11-01", {"R_old": 100})
     snap("2026-11-09", {"R_old": 120, "R_late": 50})
     snap("2026-11-10", {"R_old": 125, "R_late": 80})
     rs = by_name(b.build(snaps))
-    assert (rs["a/late"]["delta"], rs["a/late"]["window"], rs["a/late"]["new"]) == (30, 1, True)
+    assert (rs["a/late"]["p"]["7"]["d"], rs["a/late"]["p"]["7"]["w"], rs["a/late"]["new"]) == (30, 1, True)
+    assert rs["a/late"]["p"]["7"]["n"] == 1 and "n" not in rs["a/old"]["p"]["7"]
     assert rs["a/old"]["new"] is False
 
 
-def test_sorted_by_delta(env):
+def test_ranks_per_board(env):
     snaps, snap = env
-    snap("2026-11-01", {"R_old": 100, "R_late": 10})
-    snap("2026-11-02", {"R_old": 101, "R_late": 60})
-    assert [r["name"] for r in b.build(snaps)["repos"]] == ["a/late", "a/old"]
+    snap("2026-11-01", {"R_old": 1000, "R_late": 10})
+    snap("2026-11-02", {"R_old": 1100, "R_late": 60})
+    t = b.build(snaps)
+    rs = by_name(t)
+    assert (rs["a/old"]["p"]["1"]["g"], rs["a/late"]["p"]["1"]["g"]) == (1, 2)   # by gain
+    assert "q" not in rs["a/late"]["p"]["1"]                                    # base 10 < 100 stars
+    assert (rs["a/old"]["ar"], rs["a/late"]["ar"], rs["a/late"]["par"]) == (1, 2, 2)
+    assert [r["name"] for r in t["repos"]] == ["a/old", "a/late"]               # all-time order
 
 
 def test_pushed_flows_from_activity(env):

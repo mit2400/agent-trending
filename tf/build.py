@@ -1,7 +1,7 @@
 """Build data/trending.json from snapshots + registry.
 
-Per repo, the baseline is the snapshot from `date - 7d`; when tracking is younger than
-that (or the repo joined later), the oldest snapshot inside the window is used instead.
+Gains, growth and ranks per period (1, 7, 30 days) come from tf.rank, shared with the Skills
+board; only the last 30 days of snapshots are read.
 
 Usage: uv run python -m tf.build [--snapshots DIR] [--date YYYY-MM-DD] [--preview]
 """
@@ -9,21 +9,17 @@ Usage: uv run python -m tf.build [--snapshots DIR] [--date YYYY-MM-DD] [--previe
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import sys
 from collections import Counter
 from pathlib import Path
 
 from .common import DATA, SNAPSHOTS, dump, load, now_iso
+from .rank import PERIODS, SPARK_DAYS, add_periods, available_periods, ndays, ranks, shift, spark
 
-WINDOW = 7
+JOINED_DAYS = 7        # repos added to the registry this recently (after tracking began) count as "new"
 NEW_REPO_DAYS = 30      # repos created this recently count as "new"
 RATE_MIN_BASE = 100     # % ranking only considers repos with at least this many baseline stars
 DESC_MAX = 160
-
-
-def days(a: str, b: str) -> int:
-    return (dt.date.fromisoformat(b) - dt.date.fromisoformat(a)).days
 
 
 def source_credits(cfg: dict, overrides: dict, registry: dict, live: dict) -> dict:
@@ -66,10 +62,12 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
         raise SystemExit(f"no snapshots in {snap_dir}")
     latest = load(files[-1])
     date = latest["date"]
-    start = (dt.date.fromisoformat(date) - dt.timedelta(days=WINDOW)).isoformat()
-    window = [load(p) for p in files if p.stem >= start]
     tracking_start = files[0].stem
+    # only the last max(PERIODS) days are read; older snapshots stay in the repo as history
+    snaps = [load(p) for p in files if p.stem >= shift(date, -max(PERIODS))]
+    prev = snaps[-2] if len(snaps) > 1 else None
     first_seen = set(load(files[0])["stars"])  # repos present when tracking began
+    periods = available_periods(tracking_start, date)
 
     registry = load(DATA / "registry.json")["repos"]
     pushed = load(DATA / "activity.json", {}).get("pushed", {})
@@ -78,39 +76,43 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
     # days each repo was on the daily GitHub Trending page (written by `tf.discover`)
     gh_trending = (load(DATA / "gh-trending.json") or {}).get("repos", {})
     cur_stars = latest["stars"]
-    out = []
-    for rid, e in registry.items():
-        if rid not in cur_stars:
-            continue
-        series = [(s["date"], s["stars"][rid]) for s in window if rid in s["stars"]]
-        base_date, base = series[0]
-        stars = cur_stars[rid]
-        wd = days(base_date, date)
-        delta = stars - base if wd > 0 else None
-        rate = round(delta / base, 5) if delta is not None and base > 0 else None
-        created_recently = days(e["created"], date) <= NEW_REPO_DAYS
+    live = [rid for rid in registry if rid in cur_stars]
+
+    series = {rid: [(s["date"], s["stars"][rid]) for s in snaps if rid in s["stars"]] for rid in live}
+    new = set()
+    for rid in live:
+        e = registry[rid]
+        created_recently = ndays(e["created"], date) <= NEW_REPO_DAYS
         # preview snapshots predate most registry additions; don't flag those as new
-        joined_recently = not preview and rid not in first_seen and days(e["added"], date) <= WINDOW
+        joined_recently = not preview and rid not in first_seen and ndays(e["added"], date) <= JOINED_DAYS
+        if created_recently or joined_recently:
+            new.add(rid)
+    stats: dict[str, dict] = {rid: {} for rid in live}
+    add_periods(stats, series, date, periods, RATE_MIN_BASE, cur_stars, new)
+    rank_all = ranks(cur_stars)
+    prev_rank_all = ranks(prev["stars"]) if prev else {}
+
+    out = []
+    for rid in live:
+        e = registry[rid]
         out.append({
             "id": rid,
             "name": e["name"],
             "desc": e.get("description", "")[:DESC_MAX],
             "lang": e.get("language"),
             "type": e["tags"].get("type", []),
-            "scope": e["tags"].get("scope", []),
             "created": e["created"],
             "pushed": pushed.get(rid),
-            "stars": stars,
-            "base": base,
-            "delta": delta,
-            "rate": rate,
-            "window": wd,
-            "spark": [n for _, n in series],
-            "new": created_recently or joined_recently,
+            "stars": cur_stars[rid],
+            "ar": rank_all[rid],
+            **({"par": prev_rank_all[rid]} if rid in prev_rank_all else {}),
+            "p": stats[rid].get("p", {}),
+            "spark": spark(series[rid], date),
+            "new": rid in new,
             **({"skills": repo_skills[e["name"]]} if e["name"] in repo_skills else {}),
             **gh_trending_fields(gh_trending.get(rid, []), date),
         })
-    out.sort(key=lambda r: (r["delta"] is None, -(r["delta"] or 0), -r["stars"]))
+    out.sort(key=lambda r: r["ar"])
 
     cfg = load(DATA / "sources.json")
     overrides = load(DATA / "overrides.json", {"include": {}})
@@ -118,29 +120,23 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
         "generated_at": now_iso(),
         "date": date,
         "preview": preview,
-        "window_max": WINDOW,
         "tracking_start": tracking_start,
+        "periods": periods,
+        "collected_at": latest["collected_at"],
+        "prev_collected_at": prev["collected_at"] if prev else None,
+        "spark_dates": [s["date"] for s in snaps if s["date"] >= shift(date, -SPARK_DAYS)],
         "gh_trending_since": min((d[0] for d in gh_trending.values() if d), default=None),
-        "baseline_date": window[0]["date"],
-        "baseline_collected_at": window[0]["collected_at"],
-        "latest_collected_at": latest["collected_at"],
-        "snapshots_in_window": len(window),
-        "window_dates": [s["date"] for s in window],  # spark arrays are right-aligned to these
         "rate_min_base": RATE_MIN_BASE,
         "new_repo_days": NEW_REPO_DAYS,
         "count": len(out),
-        "counts": {
-            "type": dict(Counter(t for r in out for t in r["type"]).most_common()),
-            "scope": dict(Counter(t for r in out for t in r["scope"]).most_common()),
-        },
+        "counts": {"type": dict(Counter(t for r in out for t in r["type"]).most_common())},
         "sources": source_credits(cfg, overrides, registry, cur_stars),
         "repos": out,
     }
     if not write:
         return trending
     dump(DATA / "trending.json", trending, compact=True)
-    movers = sum(1 for r in out if r["delta"])
-    print(f"trending.json: {len(out)} repos, {movers} moved, window {window[0]['date']}..{date}", file=sys.stderr)
+    print(f"trending.json: {len(out)} repos, periods {periods}, {len(snaps)} days read", file=sys.stderr)
     return trending
 
 

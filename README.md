@@ -8,23 +8,25 @@
 
 Agent Trending tracks about a thousand established repos around AI agents (Claude Code, Codex, Cursor, Gemini CLI, MCP servers, skills, plugins, marketplaces, agent frameworks and AI tools) and shows which ones are gaining stars fastest right now.
 
-- 🔥 **Top gains**: most stars gained over the last 7 days
+- 🔥 **Top gains**: most stars gained
 - 📈 **Fastest growing**: biggest growth in percent
-- ✨ **New**: repos created in the last 30 days, or that joined the tracked set this week
 - ⭐ **All-time**: total stars
+- ✨ **New**: repos created in the last 30 days, or that joined the tracked set this week
+
+Gains are shown for **Today**, **7 days** or **30 days**; each period becomes selectable once that much history has been collected.
 
 A second board, **Skills** (toggle at the top of the page, or [`?view=skills`](https://mit2400.github.io/agent-trending/?view=skills)), tracks install counts of agent skills from [skills.sh](https://skills.sh) the same way:
 
-- 🔥 **Top gains** / 📈 **Fastest growing**: installs gained over the last 7 days
+- 🔥 **Top gains** / 📈 **Fastest growing**: installs gained, for the same Today / 7 days / 30 days periods
+- ⭐ **All-time**: total installs
 - ⚡ **Trending 24h**: skills.sh's 24-hour list, with each skill's rank change since yesterday
 - 🔀 **In & out**: skills that entered or left the trending top 300 today, this week or this month
-- ⭐ **All-time**: total installs
 
 Repos that publish skills link to them, and skills link back to their source repo.
 
 Repos that are on today's [GitHub Trending](https://github.com/trending) page get a **GitHub Trending · Nth** badge: how many days they have been on it since Nov 22, 2026, when logging began (`data/gh-trending.json`).
 
-You can filter every repo view by **type** (MCP, Skills, Plugins, Marketplaces, Agents, Frameworks, …), search by name or description, and share a filtered view: the URL keeps your tab and filters.
+You can filter every repo view by **type** (MCP, Skills, Plugins, Marketplaces, Agents, Frameworks, …), search by name or description, and share a filtered view: the URL keeps your tab, period and filters. Every tab has its own ranking, and a filtered or searched list keeps each item's rank on the whole board.
 
 ---
 
@@ -70,15 +72,16 @@ Tagging is rule-based (no LLM), so a few repos are untagged or tagged loosely.
 ## How the ranking works
 
 - Every day around **00:00 KST** (GitHub may delay scheduled runs by a few hours) the star count of every tracked repo is saved as a snapshot.
-- A repo's **gain** is today's stars minus its stars **7 days ago**.
-- When less than a week of history exists (right after launch, or for a repo that joined recently), the oldest snapshot available is used instead. The page then shows the shorter window next to the number, for example `+40 · 2d`.
-- **Fastest growing** divides the gain by the star count at the start of the window.
+- A repo's **gain** for a period is today's stars minus its stars at the start of the period: yesterday (**Today**), **7 days** ago or **30 days** ago.
+- A period is offered only once that much history exists, so the 7-day view opens after a week of collection and the 30-day view after a month. A repo that joined later uses its oldest snapshot inside the period and shows the shorter span next to the number, for example `+40 · 2d`.
+- **Fastest growing** divides the gain by the star count at the start of the period (repos with at least 100 stars).
+- Ranks are computed for every tab and period at build time ([`tf/rank.py`](tf/rank.py), shared with the Skills board). Builds read only the last 30 days of snapshots; sparklines show the last 7 days.
 
 ### Skills
 
 **Every skill on the skills.sh leaderboards is tracked**, about 13,500 a day: the all-time list (about 9,900 skills) plus the 24-hour trending list (about 9,950, including new skills not yet on the all-time list). They are read from the public JSON that skills.sh's own leaderboard page loads, about 100 paged requests a day spaced 2 seconds apart.
 
-- **Gain** is today's all-time install count minus the count 7 days ago, like stars. Skills that are only on the trending list have no all-time count; they show their 24-hour installs.
+- **Gain** is today's all-time install count minus the count at the start of the period (Today, 7 days, 30 days), exactly like stars. Skills that are only on the trending list have no all-time count; they show their 24-hour installs.
 - **Trending** means the top 300 of skills.sh's 24-hour list. A skill enters or leaves it on the first day it crosses that line.
 - Install counts are skills.sh's CLI telemetry, taken as reported.
 
@@ -136,6 +139,7 @@ tf/                           Python package
   collect.py                  daily star snapshot
   skills.py                   skills.sh: collect, build skills.json, gate
   build.py                    rankings → trending.json
+  rank.py                     periods (today / 7d / 30d), gains and per-tab ranks for both boards
   gate.py                     data checks before committing
   publish.py                  RSS feed + weekly digest
   gh.py, common.py            GitHub client, shared helpers
