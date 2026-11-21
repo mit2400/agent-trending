@@ -125,38 +125,20 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.3
       - run: uv sync --frozen
 
-      - name: Restore raw skill snapshots (skills-raw branch)
-        run: |
-          mkdir -p raw
-          if git fetch --depth 1 origin skills-raw; then
-            git archive FETCH_HEAD | tar -x -C raw
-          else
-            echo "no skills-raw branch yet; starting fresh"
-          fi
-
       - name: Collect skills.sh (all-time + trending, ~100 paced requests)
         run: uv run python -m tf.skills collect
 
-      - name: Build skills.json and today's display snapshot
-        run: uv run python -m tf.skills build --snapshot
+      - name: Build skills.json (validated by the gate, rebuilt at deploy)
+        run: uv run python -m tf.skills build
 
       - name: Gate
         run: uv run python -m tf.skills gate
 
-      - name: Push raw snapshots (skills-raw = one commit holding the last 30 days)
-        run: |
-          cd raw
-          git init -q -b skills-raw
-          git add -A
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -qm "raw: $(date +%F)"
-          git push -qf "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:skills-raw
-
-      - name: Commit display snapshot
+      - name: Commit today's lists
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/skills
+          git add data/skills-raw
           if git diff --cached --quiet; then
             echo "nothing to commit"
             exit 0
@@ -190,10 +172,6 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.3
       - run: uv sync --frozen
 
-      - name: Restore raw skill snapshots (skills-raw branch)
-        run: |
-          mkdir -p raw
-          git fetch --depth 1 origin skills-raw && git archive FETCH_HEAD | tar -x -C raw || echo "no skills-raw branch"
 
       - name: Build site
         id: build
@@ -202,7 +180,7 @@ jobs:
             echo "no snapshots yet; keeping the current deployment"
             exit 0
           fi
-          if compgen -G "raw/all-time/*.json.gz" > /dev/null || compgen -G "data/skills/*.json" > /dev/null; then
+          if compgen -G "data/skills-raw/all-time/*.json" > /dev/null; then
             # before tf.build (repo rows link to their skills); preview data until 2 production days exist
             uv run python -m tf.skills build --preview-dir preview/skills
           fi

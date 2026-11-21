@@ -3,19 +3,18 @@
 Every skill on the skills.sh leaderboards (all-time ∪ trending) is collected daily from the
 public JSON endpoint the site itself uses (`/api/skills/{view}/{page}`, 200 rows per page).
 
-  raw/                     full daily snapshots, last KEEP_DAYS days. Lives on the `skills-raw`
-                           branch (one force-pushed commit, so history never grows); gitignored on main.
-    all-time/DATE.json.gz  {date, collected_at, total, installs: {key: n}, official: [key], names: {key: name}}
-    trending/DATE.json.gz  {date, collected_at, total, order: [[key, installs_24h], ...]}  (rank = position)
-  data/skills/DATE.json    display snapshot committed to main: the skills shown on the page that day
-                           plus the trending top TREND_CUT. Fallback history if raw/ is lost.
-  data/skills.json         page data, rebuilt at deploy (gitignored).
+  data/skills-raw/                full daily lists, committed to main and never pruned (like repo
+                                  snapshots). One skill per line so git stores each day as a small delta.
+    all-time/DATE.json            {date, collected_at, total, official: [key], names: {key: name},
+                                   installs: {key: n}}
+    trending/DATE.json            {date, collected_at, total, order: [[key, installs_24h], ...]} (rank = position)
+  data/skills.json                page data, rebuilt at deploy from the last READ_DAYS days (gitignored).
 
 A skill's key is "source|skillId" (both parts may contain "/").
 
 Usage:
-  uv run python -m tf.skills collect [--date D] [--force]   fetch both lists into raw/, prune old days
-  uv run python -m tf.skills build [--date D] [--snapshot]  write data/skills.json (+ display snapshot)
+  uv run python -m tf.skills collect [--date D] [--force]   fetch both lists into data/skills-raw/
+  uv run python -m tf.skills build [--date D]               write data/skills.json
   uv run python -m tf.skills build --preview-dir preview/skills
                                                            same, but while production has fewer than two
                                                            days, build from two manual test collections
@@ -27,7 +26,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import gzip
 import json
 import re
 import sys
@@ -38,20 +36,18 @@ from typing import Callable
 
 import httpx
 
-from .common import DATA, ROOT, SNAPSHOTS, dump, load, now_iso, today
+from .common import DATA, SNAPSHOTS, dump, load, now_iso, today
 
 API = "https://skills.sh/api/skills/{view}/{page}"
 VIEWS = ("all-time", "trending")
-RAW = ROOT / "raw"
-SKILL_SNAPS = DATA / "skills"
+RAW = DATA / "skills-raw"
 OUT = DATA / "skills.json"
 
-KEEP_DAYS = 30          # raw history kept on the skills-raw branch
+READ_DAYS = 30          # build reads only this many recent days (history itself is never pruned)
 TREND_CUT = 300         # "in trending" = top N of the 24h list (skills.sh's own first screen)
 TOP = 300               # rows per leaderboard tab
 WINDOW = 7
 RATE_MIN_BASE = 1000    # % ranking only considers skills with at least this many baseline installs
-MOVES_DAYS = 30
 
 DELAY = 2.0             # seconds between page requests
 VIEW_GAP = 60.0         # pause between the two lists (a burst of ~50 fast requests gets HTTP 429)
@@ -138,18 +134,28 @@ def fetch_view(client: httpx.Client, view: str, delay: float = DELAY,
 
 
 # ---------------------------------------------------------------- raw files
+BODY = {"all-time": "installs", "trending": "order"}  # the big field, written one entry per line
+
+
 def raw_path(raw: Path, view: str, date: str) -> Path:
-    return raw / view / f"{date}.json.gz"
+    return raw / view / f"{date}.json"
 
 
-def write_gz(path: Path, obj: dict) -> None:
+def write_raw(path: Path, obj: dict, body: str) -> None:
+    """JSON with the small fields on the first line and one entry of `body` per line after it."""
+    j = lambda x: json.dumps(x, ensure_ascii=False, separators=(",", ":"))
+    head = {k: v for k, v in sorted(obj.items()) if k != body}
+    items = obj[body]
+    if isinstance(items, dict):
+        lines, open_, close = [f"{j(k)}:{j(v)}" for k, v in sorted(items.items())], "{", "}"
+    else:
+        lines, open_, close = [j(x) for x in items], "[", "]"
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-    path.write_bytes(gzip.compress(text.encode(), mtime=0))
+    path.write_text(f"{j(head)[:-1]},{j(body)}:{open_}\n" + ",\n".join(lines) + f"\n{close}}}\n")
 
 
-def read_gz(path: Path) -> dict | None:
-    return json.loads(gzip.decompress(path.read_bytes())) if path.exists() else None
+def read_raw(path: Path) -> dict | None:
+    return load(path)
 
 
 def to_raw(view: str, rows: list[dict], total: int, date: str, collected_at: str) -> dict:
@@ -165,31 +171,22 @@ def to_raw(view: str, rows: list[dict], total: int, date: str, collected_at: str
     }
 
 
-def prune(raw: Path, date: str, keep: int = KEEP_DAYS) -> list[Path]:
-    cutoff = shift(date, -(keep - 1))
-    gone = [p for v in VIEWS for p in (raw / v).glob("*.json.gz") if p.name[:10] < cutoff]
-    for p in gone:
-        p.unlink()
-    return gone
-
-
 def collect(date: str, raw: Path = RAW, force: bool = False, client: httpx.Client | None = None,
             delay: float = DELAY, gap: float = VIEW_GAP, sleep: Callable[[float], None] = time.sleep) -> None:
     client = client or httpx.Client(timeout=30, headers={"User-Agent": UA}, follow_redirects=True)
-    for i, view in enumerate(VIEWS):
+    fetched = 0
+    for view in VIEWS:
         path = raw_path(raw, view, date)
         if path.exists() and not force:
             print(f"{view}/{path.name} already collected; skipping (use --force to overwrite)", file=sys.stderr)
             continue
-        if i:
+        if fetched:
             sleep(gap)
         t0 = time.monotonic()
         rows, total = fetch_view(client, view, delay, sleep)
-        write_gz(path, to_raw(view, rows, total, date, now_iso()))
+        write_raw(path, to_raw(view, rows, total, date, now_iso()), BODY[view])
+        fetched += 1
         print(f"{view}: {len(rows)}/{total} skills in {time.monotonic() - t0:.0f}s", file=sys.stderr)
-    gone = prune(raw, date)
-    if gone:
-        print(f"pruned {len(gone)} raw files older than {KEEP_DAYS} days", file=sys.stderr)
 
 
 # ---------------------------------------------------------------- history
@@ -201,29 +198,23 @@ class Day:
     trending: list[tuple[str, int]]            # [[key, installs_24h], ...] in rank order
     official: set[str] = field(default_factory=set)
     names: dict[str, str] = field(default_factory=dict)
-    partial: bool = False                      # rebuilt from a display snapshot, not a full list
 
     @property
     def cut(self) -> dict[str, int]:
         return {k: i + 1 for i, (k, _) in enumerate(self.trending[:TREND_CUT])}
 
 
-def load_day(date: str, raw: Path, snaps: Path) -> Day | None:
-    a = read_gz(raw_path(raw, "all-time", date))
-    if a:
-        t = read_gz(raw_path(raw, "trending", date)) or {}
-        return Day(date, a["collected_at"], a["installs"], t.get("order", []),
-                   set(a.get("official", [])), a.get("names", {}))
-    s = load(snaps / f"{date}.json")
-    if s:
-        return Day(date, s["collected_at"], s["installs"], s.get("trending", []),
-                   set(s.get("official", [])), s.get("names", {}), partial=True)
-    return None
+def load_day(date: str, raw: Path) -> Day | None:
+    a = read_raw(raw_path(raw, "all-time", date))
+    if not a:
+        return None
+    t = read_raw(raw_path(raw, "trending", date)) or {}
+    return Day(date, a["collected_at"], a["installs"], [tuple(x) for x in t.get("order", [])],
+               set(a.get("official", [])), a.get("names", {}))
 
 
-def available_dates(raw: Path, snaps: Path, upto: str | None) -> list[str]:
-    ds = {p.name[:10] for p in (raw / "all-time").glob("*.json.gz")} | {p.stem for p in snaps.glob("*.json")}
-    return sorted(d for d in ds if upto is None or d <= upto)
+def available_dates(raw: Path, upto: str | None = None) -> list[str]:
+    return sorted(p.stem for p in (raw / "all-time").glob("*.json") if upto is None or p.stem <= upto)
 
 
 def streak_back(days: list[Day], i: int, k: str) -> int:
@@ -261,20 +252,20 @@ def repo_index() -> dict[str, dict]:
             for rid, e in reg.items() if not e.get("archived")}
 
 
-def build(date: str | None = None, raw: Path = RAW, snaps: Path = SKILL_SNAPS, write: bool = True,
-          snapshot: bool = False, preview: bool = False) -> dict:
-    dates = available_dates(raw, snaps, date)
+def build(date: str | None = None, raw: Path = RAW, write: bool = True, preview: bool = False) -> dict:
+    dates = available_dates(raw, date)
     if not dates:
-        raise SystemExit(f"no skill snapshots in {raw} or {snaps}")
+        raise SystemExit(f"no skill snapshots in {raw}")
     date = dates[-1]
-    days = [d for d in (load_day(x, raw, snaps) for x in dates if x >= shift(date, -MOVES_DAYS)) if d]
+    # only the last READ_DAYS days are read; older files stay in the repo as history
+    days = [d for d in (load_day(x, raw) for x in dates if x > shift(date, -READ_DAYS)) if d]
     cur = days[-1]
     prev = days[-2] if len(days) > 1 else None
     window = [d for d in days if d.date >= shift(date, -WINDOW)]
 
     rank_all = {k: i + 1 for i, k in enumerate(sorted(cur.installs, key=lambda k: (-cur.installs[k], k)))}
     prev_rank_all = ({k: i + 1 for i, k in enumerate(sorted(prev.installs, key=lambda k: (-prev.installs[k], k)))}
-                     if prev and not prev.partial else {})
+                     if prev else {})
     t24: dict[str, int] = {k: n for k, n in cur.trending}
     cut, prev_cut = cur.cut, (prev.cut if prev else {})
 
@@ -333,7 +324,6 @@ def build(date: str | None = None, raw: Path = RAW, snaps: Path = SKILL_SNAPS, w
         "generated_at": now_iso(),
         "date": date,
         "collected_at": cur.collected_at,
-        "partial": cur.partial,
         "preview": preview,
         "window_max": WINDOW,
         "tracking_start": dates[0],
@@ -353,41 +343,25 @@ def build(date: str | None = None, raw: Path = RAW, snaps: Path = SKILL_SNAPS, w
             "installs_24h": sum(t24.values()),
         },
         "by_repo": by_repo,
-        "moves": moves(days, shift(date, -(MOVES_DAYS - 1))),
+        "moves": moves(days, shift(date, -(READ_DAYS - 1))),
         "skills": rows,
     }
     if write:
         dump(OUT, out, compact=True)
         print(f"skills.json: {len(rows)} shown of {len(tracked)} tracked, "
               f"window {window[0].date}..{date}", file=sys.stderr)
-    if snapshot:
-        write_display_snapshot(cur, {r["k"] for r in rows}, snaps)
     return out
 
 
-def write_display_snapshot(day: Day, keys: set[str], snaps: Path) -> Path:
-    keep = keys | set(day.cut)
-    path = snaps / f"{day.date}.json"
-    dump(path, {
-        "date": day.date,
-        "collected_at": day.collected_at,
-        "installs": {k: n for k, n in day.installs.items() if k in keep},
-        "trending": day.trending[:TREND_CUT],
-        "official": sorted(day.official & keep),
-        "names": {k: v for k, v in day.names.items() if k in keep},
-    }, compact=True)
-    return path
-
-
-def use_preview(raw: Path, snaps: Path, preview_dir: Path | None) -> bool:
+def use_preview(raw: Path, preview_dir: Path | None) -> bool:
     """Deploy preview data until production has two days to compare."""
     if not preview_dir:
         return False
-    return len(available_dates(raw, snaps, None)) < 2 and len(available_dates(preview_dir, preview_dir / "-", None)) >= 2
+    return len(available_dates(raw)) < 2 and len(available_dates(preview_dir)) >= 2
 
 
 # ---------------------------------------------------------------- gate
-def check(date: str, raw: Path = RAW, snaps: Path = SKILL_SNAPS) -> tuple[list[str], list[str]]:
+def check(date: str, raw: Path = RAW) -> tuple[list[str], list[str]]:
     from .gate import git
 
     errors: list[str] = []
@@ -396,23 +370,24 @@ def check(date: str, raw: Path = RAW, snaps: Path = SKILL_SNAPS) -> tuple[list[s
     outside = [p for p in changed if not p.startswith("data/")]
     if outside:
         errors.append(f"files changed outside data/: {outside[:5]}")
-    rel = f"data/skills/{date}.json"
-    if git("ls-files", rel).strip() and rel in changed:
-        errors.append(f"display snapshot {date} is already committed and was modified")
+    for view in VIEWS:
+        rel = f"data/skills-raw/{view}/{date}.json"
+        if git("ls-files", rel).strip() and rel in changed:
+            errors.append(f"{rel} is already committed and was modified")
 
-    a = read_gz(raw_path(raw, "all-time", date))
-    t = read_gz(raw_path(raw, "trending", date))
+    a = read_raw(raw_path(raw, "all-time", date))
+    t = read_raw(raw_path(raw, "trending", date))
     if not a or a.get("date") != date or not a.get("installs"):
-        errors.append(f"raw all-time snapshot for {date} missing or malformed")
+        errors.append(f"all-time list for {date} missing or malformed")
         return errors, warns
     if not t or t.get("date") != date or not t.get("order"):
-        errors.append(f"raw trending snapshot for {date} missing or malformed")
+        errors.append(f"trending list for {date} missing or malformed")
     bad = [k for k, v in a["installs"].items() if "|" not in k or not isinstance(v, int) or v < 0]
     if bad:
         errors.append(f"all-time has {len(bad)} invalid entries, e.g. {bad[:3]}")
 
-    older = sorted(p.name[:10] for p in (raw / "all-time").glob("*.json.gz") if p.name[:10] < date)
-    p = read_gz(raw_path(raw, "all-time", older[-1])) if older else None
+    older = [d for d in available_dates(raw) if d < date]
+    p = read_raw(raw_path(raw, "all-time", older[-1])) if older else None
     if p:
         cur, prv = a["installs"], p["installs"]
         if len(cur) < len(prv) * GATE_MIN_COUNT:
@@ -423,12 +398,11 @@ def check(date: str, raw: Path = RAW, snaps: Path = SKILL_SNAPS) -> tuple[list[s
         elif crashed:
             warns.append(f"{len(crashed)} skills lost >50% installs: {crashed[:5]}")
 
-    s = load(snaps / f"{date}.json")
-    if not s or s.get("date") != date or not s.get("installs"):
-        errors.append(f"display snapshot {rel} missing or malformed")
     out = load(OUT)
     if not out or out.get("date") != date:
         errors.append("skills.json missing or not built for today")
+    elif out.get("preview"):
+        errors.append("skills.json is preview data")
     return errors, warns
 
 
@@ -439,17 +413,16 @@ if __name__ == "__main__":
     ap.add_argument("--date")
     ap.add_argument("--raw", type=Path, default=RAW)
     ap.add_argument("--force", action="store_true")
-    ap.add_argument("--snapshot", action="store_true", help="also write the display snapshot to data/skills/")
     ap.add_argument("--preview-dir", type=Path, help="raw-layout test collections to use until production has 2 days")
     a = ap.parse_args()
     if a.cmd == "collect":
         collect(a.date or today(), a.raw, a.force)
     elif a.cmd == "build":
-        if use_preview(a.raw, SKILL_SNAPS, a.preview_dir):
+        if use_preview(a.raw, a.preview_dir):
             print(f"fewer than 2 production days; building preview data from {a.preview_dir}", file=sys.stderr)
-            build(a.date, a.preview_dir, a.preview_dir / "-", preview=True)
+            build(a.date, a.preview_dir, preview=True)
         else:
-            build(a.date, a.raw, snapshot=a.snapshot)
+            build(a.date, a.raw)
     else:
         d = a.date or today()
         errors, warns = check(d, a.raw)

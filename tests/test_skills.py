@@ -60,19 +60,18 @@ def test_fetch_gives_up_after_retries():
         sk.fetch_view(client, "trending", sleep=lambda s: None)
 
 
-def test_collect_writes_raw_skips_existing_and_prunes(tmp_path):
+def test_collect_writes_one_skill_per_line_and_skips_existing(tmp_path):
     raw = tmp_path / "raw"
-    old = sk.raw_path(raw, "all-time", "2026-10-01")
-    sk.write_gz(old, {"date": "2026-10-01"})
     pages = {("all-time", 0): [row("o/skills", "alpha", 50, isOfficial=True), row("o/skills", "beta", 40, name="Beta!")],
              ("trending", 0): [row("o/skills", "beta", 9), row("o/skills", "alpha", 3)]}
     client, calls = api(pages, {"all-time": 2, "trending": 2})
     sk.collect("2026-11-22", raw, client=client, sleep=lambda s: None)
-    a = sk.read_gz(sk.raw_path(raw, "all-time", "2026-11-22"))
-    t = sk.read_gz(sk.raw_path(raw, "trending", "2026-11-22"))
+    a_path = sk.raw_path(raw, "all-time", "2026-11-22")
+    a = sk.read_raw(a_path)
+    t = sk.read_raw(sk.raw_path(raw, "trending", "2026-11-22"))
     assert a["installs"] == {A: 50, B: 40} and a["official"] == [A] and a["names"] == {B: "Beta!"}
     assert t["order"] == [[B, 9], [A, 3]]
-    assert not old.exists()
+    assert a_path.read_text().splitlines()[1:3] == [f'"{A}":50,', f'"{B}":40']  # one skill per line
     sk.collect("2026-11-22", raw, client=client, sleep=lambda s: None)
     assert len(calls) == 2  # second run reuses today's files
 
@@ -88,14 +87,14 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(sk, "SNAPSHOTS", data / "snapshots")
     monkeypatch.setattr(sk, "OUT", data / "skills.json")
     monkeypatch.setattr(sk, "TREND_CUT", 2)
-    raw, snaps = tmp_path / "raw", data / "skills"
+    raw = data / "skills-raw"
 
-    def day(date, installs, trending):
-        sk.write_gz(sk.raw_path(raw, "all-time", date),
-                    {"date": date, "collected_at": f"{date}T15:00:00Z", "installs": installs, "official": [A]})
-        sk.write_gz(sk.raw_path(raw, "trending", date),
-                    {"date": date, "collected_at": f"{date}T15:01:00Z", "order": trending})
-    return raw, snaps, day
+    def day(date, installs, trending, root=raw):
+        sk.write_raw(sk.raw_path(root, "all-time", date),
+                     {"date": date, "collected_at": f"{date}T15:00:00Z", "installs": installs, "official": [A]}, "installs")
+        sk.write_raw(sk.raw_path(root, "trending", date),
+                     {"date": date, "collected_at": f"{date}T15:01:00Z", "order": trending}, "order")
+    return raw, day
 
 
 def by_key(t):
@@ -103,9 +102,9 @@ def by_key(t):
 
 
 def test_first_day_has_no_history(env):
-    raw, snaps, day = env
+    raw, day = env
     day("2026-11-20", {A: 100, B: 50}, [[B, 9], [A, 5], [C, 1]])
-    t = sk.build(raw=raw, snaps=snaps, write=False)
+    t = sk.build(raw=raw, write=False)
     rs = by_key(t)
     assert t["has_history"] is False and t["moves"] == []
     assert rs[A]["delta"] is None and rs[A]["ar"] == 1 and rs[B]["tr"] == 1
@@ -113,11 +112,11 @@ def test_first_day_has_no_history(env):
 
 
 def test_deltas_ranks_moves_and_streaks(env):
-    raw, snaps, day = env
+    raw, day = env
     day("2026-11-20", {A: 100, B: 50}, [[B, 9], [A, 5], [C, 1]])
     day("2026-11-21", {A: 110, B: 80}, [[B, 9], [A, 5], [C, 2]])
     day("2026-11-22", {A: 115, B: 140}, [[C, 30], [B, 20], [A, 4]])
-    t = sk.build(raw=raw, snaps=snaps, write=False)
+    t = sk.build(raw=raw, write=False)
     rs = by_key(t)
     assert (rs[A]["delta"], rs[A]["d1"], rs[A]["window"], rs[A]["spark"]) == (15, 5, 2, [100, 110, 115])
     assert (rs[B]["delta"], rs[B]["rate"]) == (90, 1.8)
@@ -138,80 +137,74 @@ def test_deltas_ranks_moves_and_streaks(env):
 
 
 def test_streak_breaks_on_missing_day(env):
-    raw, snaps, day = env
+    raw, day = env
     day("2026-11-19", {A: 1}, [[A, 5]])
     day("2026-11-21", {A: 2}, [[A, 5]])
     day("2026-11-22", {A: 3}, [[A, 5]])
-    assert by_key(sk.build(raw=raw, snaps=snaps, write=False))[A]["streak"] == 2
+    assert by_key(sk.build(raw=raw, write=False))[A]["streak"] == 2
 
 
-def test_display_snapshot_backfills_lost_raw(env):
-    raw, snaps, day = env
-    day("2026-11-21", {A: 100, B: 50}, [[A, 5], [B, 4], [C, 1]])
-    sk.build(raw=raw, snaps=snaps, write=False, snapshot=True)
-    snap = json.loads((snaps / "2026-11-21.json").read_text())
-    assert snap["installs"] == {A: 100, B: 50} and snap["trending"] == [[A, 5], [B, 4]]
-    for p in (raw / "all-time").glob("*"):   # the skills-raw branch was lost
-        p.unlink()
-    for p in (raw / "trending").glob("*"):
-        p.unlink()
-    day("2026-11-22", {A: 130, B: 51}, [[A, 5], [B, 4]])
-    rs = by_key(sk.build(raw=raw, snaps=snaps, write=False))
-    assert (rs[A]["delta"], rs[A]["window"]) == (30, 1)
-    assert "par" not in rs[A]  # partial days don't give all-time ranks
-
-
-def test_prune_keeps_last_30_days(tmp_path):
-    for d in ("2026-10-23", "2026-10-24", "2026-11-22"):
-        sk.write_gz(sk.raw_path(tmp_path, "trending", d), {})
-    gone = sk.prune(tmp_path, "2026-11-22")
-    assert [p.name for p in gone] == ["2026-10-23.json.gz"]
+def test_build_reads_only_the_last_30_days(env, monkeypatch):
+    raw, day = env
+    day("2026-10-01", {A: 1}, [[A, 5]])          # older than 30 days: kept on disk, never read
+    day("2026-11-21", {A: 100}, [[B, 5]])
+    day("2026-11-22", {A: 110}, [[A, 5]])
+    read = []
+    orig = sk.read_raw
+    monkeypatch.setattr(sk, "read_raw", lambda p: read.append(p.stem) or orig(p))
+    t = sk.build(raw=raw, write=False)
+    assert "2026-10-01" not in read and sk.raw_path(raw, "all-time", "2026-10-01").exists()
+    assert t["tracking_start"] == "2026-10-01" and len(t["moves"]) == 1
 
 
 # ---------------------------------------------------------------- gate
 @pytest.fixture
 def gated(env, monkeypatch):
     from tf import gate as g
-    raw, snaps, day = env
+    raw, day = env
     porcelain = {"out": ""}
     monkeypatch.setattr(g, "git", lambda *a: porcelain["out"] if a[0] == "status" else "")
     many = {f"o/s|k{i}": 1000 for i in range(200)}
     day("2026-11-21", many, [["o/s|k1", 5]])
-    return raw, snaps, day, many, porcelain
+    return raw, day, many, porcelain
 
 
 def test_gate_passes_healthy_run(gated):
-    raw, snaps, day, many, _ = gated
+    raw, day, many, _ = gated
     day("2026-11-22", {k: n + 10 for k, n in many.items()}, [["o/s|k1", 5]])
-    sk.build(raw=raw, snaps=snaps, snapshot=True)
-    assert sk.check("2026-11-22", raw, snaps) == ([], [])
+    sk.build(raw=raw)
+    assert sk.check("2026-11-22", raw) == ([], [])
 
 
 def test_gate_fails_on_shrunk_list_and_outside_changes(gated):
-    raw, snaps, day, many, porcelain = gated
+    raw, day, many, porcelain = gated
     day("2026-11-22", dict(list(many.items())[:150]), [["o/s|k1", 5]])
-    sk.build(raw=raw, snaps=snaps, snapshot=True)
-    porcelain["out"] = "?? data/skills/2026-11-22.json\n M tf/skills.py\n"
-    errors, _ = sk.check("2026-11-22", raw, snaps)
+    sk.build(raw=raw)
+    porcelain["out"] = "?? data/skills-raw/all-time/2026-11-22.json\n M tf/skills.py\n"
+    errors, _ = sk.check("2026-11-22", raw)
     assert any("count fell 200 -> 150" in e for e in errors)
     assert any("outside data/" in e for e in errors)
 
 
-def test_gate_fails_without_todays_raw(gated):
-    raw, snaps, *_ = gated
-    errors, _ = sk.check("2026-11-22", raw, snaps)
-    assert any("raw all-time snapshot" in e for e in errors)
+def test_gate_fails_without_todays_list_or_on_preview(gated):
+    raw, day, many, _ = gated
+    errors, _ = sk.check("2026-11-22", raw)
+    assert any("all-time list for 2026-11-22" in e for e in errors)
+    day("2026-11-22", many, [["o/s|k1", 5]])
+    sk.build(raw=raw, preview=True)
+    errors, _ = sk.check("2026-11-22", raw)
+    assert any("preview" in e for e in errors)
 
 
-def test_preview_until_two_production_days(env):
-    raw, snaps, day = env
-    prev_dir = raw.parent / "preview"
-    for d, n in (("2026-11-20", 100), ("2026-11-21", 130)):
-        sk.write_gz(sk.raw_path(prev_dir, "all-time", d), {"date": d, "collected_at": f"{d}T19:00:00Z", "installs": {A: n}})
-    assert sk.use_preview(raw, snaps, None) is False
+def test_preview_until_two_production_days(env, tmp_path):
+    raw, day = env
+    prev_dir = tmp_path / "preview"
+    day("2026-11-20", {A: 100}, [[A, 5]], root=prev_dir)
+    day("2026-11-21", {A: 130}, [[A, 5]], root=prev_dir)
+    assert sk.use_preview(raw, None) is False
     day("2026-11-22", {A: 140}, [[A, 5]])
-    assert sk.use_preview(raw, snaps, prev_dir) is True      # production has 1 day
-    t = sk.build(raw=prev_dir, snaps=prev_dir / "-", write=False, preview=True)
-    assert t["preview"] and t["baseline_collected_at"] == "2026-11-20T19:00:00Z" and by_key(t)[A]["delta"] == 30
+    assert sk.use_preview(raw, prev_dir) is True      # production has 1 day
+    t = sk.build(raw=prev_dir, write=False, preview=True)
+    assert t["preview"] and t["baseline_collected_at"] == "2026-11-20T15:00:00Z" and by_key(t)[A]["delta"] == 30
     day("2026-11-23", {A: 150}, [[A, 5]])
-    assert sk.use_preview(raw, snaps, prev_dir) is False     # production takes over
+    assert sk.use_preview(raw, prev_dir) is False     # production takes over
