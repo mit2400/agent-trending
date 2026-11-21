@@ -423,7 +423,6 @@
     if (sdata.preview) msg = `Preview data: gains below come from two skills.sh collections taken ${skillWin(skillWindow())} apart. Daily collection runs around 00:00 KST.`;
     else if (!sdata.has_history) msg = "Collecting the first baseline — install gains appear after the next daily run (around 00:00 KST). Showing all-time installs meanwhile.";
     else if (skillWindow() < sdata.window_max) msg = `Tracking started ${fmtDate(sdata.tracking_start)}: gains are measured over the ${skillWindow()} day(s) collected so far until a full 7-day window exists.`;
-    if (sdata.partial) msg = `${msg ? msg + " " : ""}Today's full skills.sh list was unavailable; numbers come from a partial snapshot.`;
     notice(msg);
     renderPulse();
   }
@@ -577,7 +576,6 @@
     .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then((d) => {
       data = d;
-      if (Array.isArray(d.sources)) d.sources = { discovery: [], curated: d.sources.map((repo) => ({ repo, count: 0 })) };
       hasDeltas = d.repos.some((r) => r.delta);
       if (!hasDeltas && state.view === "repos") state.tab = "alltime";
       renderFooter();

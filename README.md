@@ -1,6 +1,6 @@
 # Agent Trending
 
-**What's rising in the AI agent ecosystem.** Agents, MCP servers, skills, plugins, marketplaces & AI tools — ranked by GitHub star growth, refreshed daily.
+**What's rising in the AI agent ecosystem.** Agents, MCP servers, skills, plugins, marketplaces & AI tools — ranked by GitHub star growth, plus agent skills ranked by skills.sh installs, refreshed daily.
 
 [![Agent Trending](assets/og.png)](https://mit2400.github.io/agent-trending/)
 
@@ -24,7 +24,7 @@ Repos that publish skills link to them, and skills link back to their source rep
 
 Repos that are on today's [GitHub Trending](https://github.com/trending) page get a **GitHub Trending · Nth** badge: how many days they have been on it since Nov 22, 2026, when logging began (`data/gh-trending.json`).
 
-You can filter every repo view by **type** (MCP, Skills, Plugins, Marketplaces, Agents, Frameworks, …) and **ecosystem** (Claude Code, Codex, Cursor, Gemini CLI, General), search by name, and share a filtered view: the URL keeps your tab and filters.
+You can filter every repo view by **type** (MCP, Skills, Plugins, Marketplaces, Agents, Frameworks, …) and **ecosystem** (Claude Code, Codex, Cursor, Gemini CLI, General), search by name or description, and share a filtered view: the URL keeps your tab and filters.
 
 ---
 
@@ -150,6 +150,7 @@ data/
   skills-raw/trending/DATE.json  skills.sh 24-hour list in rank order
   digests/YYYY-Www.md         weekly digests
 index.html, assets/           the static page (no build step, no framework)
+preview/skills/               two test collections shown on the Skills board until production has 2 days
 tools/make_og.py              regenerates the social card (assets/og.png)
 tests/                        pytest
 ```
@@ -179,10 +180,12 @@ Repos are keyed by their GitHub node ID, so renames and transfers don't break a 
 
 **Change the star floor or the discovery topics:** edit `min_stars` and `discovery` in `data/sources.json`.
 
-All of these take effect on the next Monday run. To apply them now, use **Actions → daily → Run workflow**:
+Curated-list changes (`sources`) take effect on the next Monday run; `overrides.json` and the `discovery` settings are used by the daily run. To apply list changes now, use **Actions → daily → Run workflow**:
 
 - **`sync_sources`**: re-read the lists and update the registry. This also collects today's stars, if they were not collected yet.
 - **`deploy_only`**: just rebuild and redeploy the site, with no collection.
+
+A push to `main` that touches `index.html`, `assets/`, `tf/`, `preview/`, `pyproject.toml` or the workflow also runs the tests and redeploys the site, without collecting.
 
 ---
 

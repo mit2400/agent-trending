@@ -30,6 +30,10 @@ concurrency:
 env:
   TZ: Asia/Seoul
 
+defaults:
+  run:
+    shell: bash          # bash -eo pipefail: a failing command before `| tee` fails the step
+
 jobs:
   collect:
     if: github.event_name != 'push' && !inputs.deploy_only
@@ -82,6 +86,7 @@ jobs:
             exit 0
           fi
           git commit -m "data: $(date +%F)"
+          git pull --rebase -q origin main
           git push
 
       - name: Publish digest as a release (emails release watchers)
@@ -167,6 +172,9 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.3
       - run: uv sync --frozen
 
+
+      - name: Test
+        run: uv run pytest -q
 
       - name: Build site
         id: build
