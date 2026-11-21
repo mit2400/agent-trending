@@ -305,3 +305,4 @@ h1 { font: 700 clamp(30px, 5.4vw, 52px)/1.05 var(--display); letter-spacing: -.0
 .foot .skills-how a { color: var(--accent); }
 .tag.ght { background: var(--gold); color: var(--surface); }
 .rg { font: 500 10px var(--mono); color: var(--muted); }
+.foot .follow-h { margin-top: 24px; }
