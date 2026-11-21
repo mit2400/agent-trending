@@ -102,6 +102,12 @@ flowchart LR
   K --> T[Build trending.json<br/>+ RSS feed]
   T --> P[Deploy to<br/>GitHub Pages]
   K -. Mondays .-> D[Weekly digest<br/>GitHub Release]
+  SK[skills.sh<br/>all-time + trending] --> SL[Daily lists<br/>installs per skill]
+  SL --> SG{Skills gate}
+  SG -- pass --> SC[Commit lists]
+  SG -- fail --> SI[Open an issue]
+  SC --> ST[Build skills.json]
+  ST --> P
 ```
 
 Everything runs in one GitHub Actions workflow, [`.github/workflows/daily.yml`](.github/workflows/daily.yml), with no servers, databases or API keys beyond the built-in `GITHUB_TOKEN`.
@@ -122,7 +128,7 @@ When it fails, nothing is committed and an issue is opened automatically.
 
 **Skills** run as a separate job after the repo data is committed, so a skills.sh outage never blocks the repo board. It has its own gate (today's list must have at least 95% of yesterday's skills, no mass install drops) and opens its own `skills-gate` issue.
 
-**What is committed:** only the raw data: the registry, one small snapshot per day and `activity.json` (last push date per repo, overwritten daily) (about 30 KB compressed, about 10 MB per year). The rankings (`trending.json`) and the RSS feed are rebuilt from the snapshots on every deploy and are never committed.
+**What is committed:** only the raw data: the registry, one small snapshot per day, `activity.json` (last push date per repo, overwritten daily) and `gh-trending.json` (days each repo was on GitHub Trending) (about 30 KB compressed, about 10 MB per year). The page data (`trending.json`, `skills.json`) and the RSS feed are rebuilt from the raw data on every deploy and are never committed.
 
 For skills, the full daily lists are committed the same way: `data/skills-raw/all-time/DATE.json` and `data/skills-raw/trending/DATE.json`, never pruned. Each file has one skill per line, so git stores a day as a delta against the previous one (about 110 KB of history a day, roughly 40 MB a year; the files themselves are about 1 MB a day on disk). Builds read only the last 30 days. `skills.json` is rebuilt on every deploy. Until production has two days to compare, the deploy builds the Skills board from `preview/skills/` instead: two real collections taken 48 minutes apart, labelled as preview on the page.
 
@@ -209,13 +215,15 @@ uv run python -m tf.gate                  # the checks the workflow runs
 
 uv run python -m tf.skills collect        # today's skills.sh lists into data/skills-raw/ (about 8 min)
 uv run python -m tf.skills build          # data/skills.json (run before tf.build)
+uv run python -m tf.skills build --preview-dir preview/skills   # what the deploy runs
+uv run python -m tf.skills gate           # the skills checks the workflow runs
 uv run python -m tf.publish feed --out feed.xml
 uv run python -m tf.publish digest --force
 
 python3 -m http.server                    # then open http://localhost:8000
 ```
 
-Only the scheduled workflow should commit snapshots. If you collect locally to try something out, don't commit `data/snapshots/`. To try the page on throwaway data, build from another folder:
+Only the scheduled workflow should commit collected data. If you collect locally to try something out, don't commit `data/snapshots/`, `data/skills-raw/` or `data/gh-trending.json`. To try the page on throwaway data, build from another folder:
 
 ```bash
 uv run python -m tf.build --snapshots .preview/snapshots --preview
