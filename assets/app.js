@@ -251,7 +251,9 @@
 
   /* ================================================================ skills */
   const skillName = (s) => s.name || s.id;
-  const skillURL = (s) => `https://skills.sh/${s.src}/${s.id}`.replace(/[^\w/:.\-~%&]/g, encodeURIComponent);
+  // skills.sh paths: /owner/repo/<id> for GitHub sources, /site/<domain>/<id> otherwise; "/" inside an id is %2F
+  const skillURL = (s) =>
+    `https://skills.sh/${s.src.includes("/") ? "" : "site/"}${s.src.split("/").map(encodeURIComponent).join("/")}/${encodeURIComponent(s.id)}`;
   const skillAvatar = (s, size) => (s.gh ? avatar(s.src.split("/")[0], size) : letterAvatar(s.src, size));
   const hasMoves = () => sdata.moves.length > 0;
   const sameSource = (src) => state.source === "all" || src.toLowerCase() === state.source.toLowerCase();
@@ -262,7 +264,9 @@
 
   function filteredSkills() {
     const q = state.q.trim().toLowerCase();
-    const rs = sdata.skills.filter((s) => sameSource(s.src) && matchesQ(q, s.id, s.name, s.src));
+    // repo-linked extras ("x") only show up when the list is narrowed to a source or a search
+    const narrowed = state.source !== "all" || q;
+    const rs = sdata.skills.filter((s) => (narrowed || !s.x) && sameSource(s.src) && matchesQ(q, s.id, s.name, s.src));
     const has = sdata.has_history;
     const tab = !has && (state.tab === "gain" || state.tab === "rate") ? "alltime" : state.tab;
     if (tab === "trending") return rs.filter((s) => s.tr != null).sort((a, b) => a.tr - b.tr);
@@ -291,10 +295,12 @@
     const sub = s.d1 != null && tab === "gain" && !sdata.preview ? `+${nf.format(s.d1)} today${win ? ` · ${win}` : ""}` : win;
     return `${deltaHTML(s.delta)}${sub ? `<span class="sub">${sub}</span>` : ""}`;
   }
+  // Position in the list as shown; on a filtered list the skills.sh-wide rank is added underneath.
   function skillRank(s, i, tab) {
-    if (tab === "trending") return `${s.tr}${rankChange(s.tr, s.ptr)}`;
-    if (tab === "alltime") return `${s.ar}${rankChange(s.ar, s.par)}`;
-    return `${i + 1}`;
+    const [g, pg] = tab === "trending" ? [s.tr, s.ptr] : tab === "alltime" ? [s.ar, s.par] : [null, null];
+    if (g == null) return `${i + 1}`;
+    const global = g !== i + 1 ? `<span class="rg" title="Rank on skills.sh">#${g}</span>` : "";
+    return `${i + 1}${global}${rankChange(g, pg)}`;
   }
   function skillPodiumBig(s, tab) {
     if (tab === "trending") return `${cf.format(s.t24)}<small>installs · 24h</small>`;
@@ -395,11 +401,11 @@
 
   function renderSkillsChrome() {
     const counts = new Map();
-    sdata.skills.forEach((s) => counts.set(s.src, (counts.get(s.src) || 0) + 1));
+    sdata.skills.forEach((s) => { if (!s.x) counts.set(s.src, (counts.get(s.src) || 0) + 1); });
     const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k]) => k);
     if (state.source !== "all" && !top.some((k) => k.toLowerCase() === state.source.toLowerCase())) top.unshift(state.source);
     const on = (v) => String(v.toLowerCase() === state.source.toLowerCase());
-    $("type-chips").innerHTML = `<button class="chip" data-source="all" aria-pressed="${on("all")}">All sources<span class="n">${nf.format(sdata.skills.length)}</span></button>` +
+    $("type-chips").innerHTML = `<button class="chip" data-source="all" aria-pressed="${on("all")}">All sources<span class="n">${nf.format(sdata.skills.filter((s) => !s.x).length)}</span></button>` +
       top.map((k) => `<button class="chip" data-source="${esc(k)}" aria-pressed="${on(k)}">${esc(k)}${counts.get(k) ? `<span class="n">${counts.get(k)}</span>` : ""}</button>`).join("");
     $("scope-chips").innerHTML = state.tab === "moves"
       ? [[1, "Today"], [7, "7 days"], [30, "30 days"]].map(([d, l]) => `<button class="chip" data-days="${d}" aria-pressed="${String(state.days === d)}">${l}</button>`).join("")
@@ -532,7 +538,8 @@
     const g = e.target.closest("[data-goto-skills],[data-goto-repo]");
     if (g) {
       e.preventDefault();
-      if (g.dataset.gotoSkills) switchView("skills", { source: g.dataset.gotoSkills });
+      // All-time lists every skill the badge counted (Top gains would hide the ones without gains)
+      if (g.dataset.gotoSkills) switchView("skills", { source: g.dataset.gotoSkills, tab: "alltime" });
       else switchView("repos", { q: g.dataset.gotoRepo });
       return;
     }

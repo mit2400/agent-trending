@@ -208,3 +208,15 @@ def test_preview_until_two_production_days(env, tmp_path):
     assert t["preview"] and t["baseline_collected_at"] == "2026-11-20T15:00:00Z" and by_key(t)[A]["delta"] == 30
     day("2026-11-23", {A: 150}, [[A, 5]])
     assert sk.use_preview(raw, prev_dir) is False     # production takes over
+
+
+def test_tracked_repo_skills_ship_as_extras(env, monkeypatch):
+    raw, day = env
+    monkeypatch.setattr(sk, "TOP", 1)
+    D = "o/skills|delta"                          # from the tracked repo O/Skills, off every board
+    day("2026-11-21", {A: 100, B: 50, D: 5, "z/z|q": 1}, [[B, 9]])
+    day("2026-11-22", {A: 120, B: 51, D: 5, "z/z|q": 1}, [[B, 9]])
+    rs = by_key(sk.build(raw=raw, write=False))
+    assert D in rs and rs[D]["x"] == 1               # listed for the repo's "N skills" link
+    assert "x" not in rs[A] and "x" not in rs[B]      # on a board
+    assert "z/z|q" not in rs                          # untracked source, off every board

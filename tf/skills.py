@@ -285,12 +285,15 @@ def build(date: str | None = None, raw: Path = RAW, write: bool = True, preview:
     gainers = sorted((k for k, s in stats.items() if s["delta"]), key=lambda k: (-stats[k]["delta"], k))
     risers = sorted((k for k, s in stats.items() if s["rate"] and s["rate"] > 0 and s["base"] >= RATE_MIN_BASE),
                     key=lambda k: (-stats[k]["rate"], k))
-    shown = set(gainers[:TOP]) | set(risers[:TOP]) | set(sorted(rank_all, key=lambda k: rank_all[k])[:TOP]) | set(cut)
+    boards = set(gainers[:TOP]) | set(risers[:TOP]) | set(sorted(rank_all, key=lambda k: rank_all[k])[:TOP]) | set(cut)
     repos = repo_index()
+    # every skill of a tracked repo is shipped too, so a repo's "N skills" link lists all N;
+    # those rows carry "x" and stay out of the unfiltered boards
+    linked = {k for k in cur.installs if split_key(k)[0].lower() in repos} - boards
     has_history = any(s["delta"] is not None for s in stats.values())
 
     rows = []
-    for k in shown:
+    for k in boards | linked:
         src, sid = split_key(k)
         s = stats.get(k, {})
         repo = repos.get(src.lower())
@@ -304,10 +307,11 @@ def build(date: str | None = None, raw: Path = RAW, write: bool = True, preview:
             "tr": cut.get(k), "ptr": prev_cut.get(k) if prev else None, "t24": t24.get(k),
             "streak": streak_back(days, len(days) - 1, k) if k in cut else 0,
             "repo": repo["name"] if repo else None, "stars": repo["stars"] if repo else None,
+            "x": 1 if k in linked else None,
         })
     rows.sort(key=lambda r: (r["delta"] is None, -(r["delta"] or 0), -(r["installs"] or 0), r["k"]))
     for r in rows:  # drop nulls/falsy flags to keep the payload small
-        for f in ("name", "official", "repo", "stars", "par", "ptr", "tr", "t24", "d1"):
+        for f in ("name", "official", "repo", "stars", "par", "ptr", "tr", "t24", "d1", "x"):
             if r[f] is None:
                 del r[f]
 
