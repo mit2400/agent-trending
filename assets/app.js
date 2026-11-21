@@ -165,14 +165,13 @@
     const rs = filtered();
     const podium = (hasDeltas || state.tab === "alltime") && !state.q && rs.length >= 3 ? rs.slice(0, 3) : [];
     renderPodium(podium);
-    const rest = rs.slice(podium.length);
+    const rest = rs;
     const shown = rest.slice(0, state.limit);
-    const offset = podium.length;
 
     $("head-metric").textContent = hasDeltas ? `${TABS[state.tab].metric} (${windowLabel(curWindow())})` : "Gain";
     $("list").innerHTML = shown.map((r, i) => `
       <li class="row">
-        <span class="rank">${offset + i + 1}</span>
+        <span class="rank">${i + 1}</span>
         <div class="repo">
           ${avatar(r.name, 32)}
           <div class="repo-body">
