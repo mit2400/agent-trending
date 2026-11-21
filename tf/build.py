@@ -54,6 +54,12 @@ def source_credits(cfg: dict, overrides: dict, registry: dict, live: dict) -> di
     }
 
 
+def gh_trending_fields(days: list[str], date: str) -> dict:
+    """`ght`: times on GitHub Trending up to `date`, only for repos that are on it on `date`."""
+    seen = [d for d in days if d <= date]
+    return {"ght": len(seen)} if date in seen else {}
+
+
 def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = False, write: bool = True) -> dict:
     files = sorted(p for p in snap_dir.glob("*.json") if date is None or p.stem <= date)
     if not files:
@@ -69,6 +75,8 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
     pushed = load(DATA / "activity.json", {}).get("pushed", {})
     # skills.sh skills published from each tracked repo (written by `tf.skills build`, if present)
     repo_skills = (load(DATA / "skills.json") or {}).get("by_repo", {})
+    # days each repo was on the daily GitHub Trending page (written by `tf.discover`)
+    gh_trending = (load(DATA / "gh-trending.json") or {}).get("repos", {})
     cur_stars = latest["stars"]
     out = []
     for rid, e in registry.items():
@@ -100,6 +108,7 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
             "spark": [n for _, n in series],
             "new": created_recently or joined_recently,
             **({"skills": repo_skills[e["name"]]} if e["name"] in repo_skills else {}),
+            **gh_trending_fields(gh_trending.get(rid, []), date),
         })
     out.sort(key=lambda r: (r["delta"] is None, -(r["delta"] or 0), -r["stars"]))
 
@@ -111,6 +120,7 @@ def build(snap_dir: Path = SNAPSHOTS, date: str | None = None, preview: bool = F
         "preview": preview,
         "window_max": WINDOW,
         "tracking_start": tracking_start,
+        "gh_trending_since": min((d[0] for d in gh_trending.values() if d), default=None),
         "baseline_date": window[0]["date"],
         "baseline_collected_at": window[0]["collected_at"],
         "latest_collected_at": latest["collected_at"],

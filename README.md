@@ -22,6 +22,8 @@ A second board, **Skills** (toggle at the top of the page, or [`?view=skills`](h
 
 Repos that publish skills link to them, and skills link back to their source repo.
 
+Repos that are on today's [GitHub Trending](https://github.com/trending) page get a **GitHub Trending · Nth** badge: how many days they have been on it since Nov 22, 2026, when logging began (`data/gh-trending.json`).
+
 You can filter every repo view by **type** (MCP, Skills, Plugins, Marketplaces, Agents, Frameworks, …) and **ecosystem** (Claude Code, Codex, Cursor, Gemini CLI, General), search by name, and share a filtered view: the URL keeps your tab and filters.
 
 ---
@@ -143,6 +145,7 @@ data/
   registry.json               tracked repos (one per line)
   snapshots/YYYY-MM-DD.json   {repo id: stars} for each day
   activity.json               {repo id: last push date}, overwritten each run
+  gh-trending.json            {repo id: [days on the daily GitHub Trending page]}
   skills/YYYY-MM-DD.json      skills shown on the page that day (+ trending top 300)
 raw/                          skills-raw branch checkout (gitignored): all-time/ and trending/ *.json.gz
   digests/YYYY-Www.md         weekly digests

@@ -5,6 +5,8 @@ Two feeds, both deterministic (no LLM):
   2. github.com/trending       — daily/weekly pages, kept when description/topics match keywords
 
 New repos are added straight to data/registry.json and probed for marker files.
+Every repo on the *daily* trending page is also logged to data/gh-trending.json ({repo id: [dates]}),
+so the page can say how many times a repo has been on GitHub Trending.
 Usage: uv run python -m tf.discover [--dry-run]
 """
 
@@ -16,7 +18,7 @@ import sys
 
 import httpx
 
-from .common import DATA, load, now_iso, today
+from .common import DATA, dump, load, now_iso, today
 from .gh import REPO_FIELDS, GitHub, topics
 from .probe import probe
 from .sources import (
@@ -74,6 +76,22 @@ def trending_dev_repos(since: str) -> list[str]:
     return parse_trending_devs(r.text)
 
 
+GH_TRENDING = DATA / "gh-trending.json"
+
+
+def record_gh_trending(ids: list[str], date: str, path=GH_TRENDING) -> dict:
+    """Add `date` to each repo's list of days on the daily GitHub Trending page (idempotent)."""
+    log = load(path, {"repos": {}})
+    for rid in ids:
+        days = log["repos"].setdefault(rid, [])
+        if date not in days:
+            days.append(date)
+            days.sort()
+    log["updated"] = now_iso()
+    dump(path, log, compact=True)
+    return log
+
+
 def discover(dry_run: bool = False, since: list[str] | None = None, topics_on: bool = True,
              dev_since: list[str] | None = None) -> list[str]:
     cfg = load(DATA / "sources.json")["discovery"]
@@ -106,10 +124,14 @@ def discover(dry_run: bool = False, since: list[str] | None = None, topics_on: b
 
     kw = re.compile(cfg["trending"]["keywords"], re.I)
     names: list[str] = []
+    daily: list[str] = []
     fetched = 0
     for period in since or cfg["trending"]["since"]:
         try:
-            names += trending_names(period)
+            got = trending_names(period)
+            names += got
+            if period == "daily":
+                daily = got
             fetched += 1
         except Exception as e:  # scraping is best-effort
             print(f"  ! trending {period}: {e}", file=sys.stderr)
@@ -130,7 +152,12 @@ def discover(dry_run: bool = False, since: list[str] | None = None, topics_on: b
         origin.setdefault(n, "discover:trending-dev")
     print(f"  trending developers: {len(set(dev_names))} popular repos listed", file=sys.stderr)
     trending_new = 0
-    for name, n in gh.repos_by_name(origin).items():
+    resolved = gh.repos_by_name(origin)
+    if daily and not dry_run:
+        log = record_gh_trending([resolved[n]["id"] for n in daily if resolved.get(n)], today())
+        print(f"  gh-trending.json: {len(daily)} repos on today's daily page, {len(log['repos'])} logged so far",
+              file=sys.stderr)
+    for name, n in resolved.items():
         if not n or n["id"] in repos or n["id"] in found or n["stargazerCount"] < min_stars:
             continue
         text = " ".join([n["nameWithOwner"], n.get("description") or "", *topics(n)])

@@ -85,3 +85,16 @@ def test_pushed_flows_from_activity(env):
     (b.DATA / "activity.json").write_text(json.dumps({"updated": "x", "pushed": {"R_old": "2026-10-30"}}))
     t = by_name(b.build(snaps, write=False))
     assert t["a/old"]["pushed"] == "2026-10-30" and t["a/late"]["pushed"] is None
+
+
+def test_gh_trending_count_only_when_on_trending_that_day(env):
+    snaps, snap = env
+    snap("2026-11-01", {"R_old": 100, "R_late": 50})
+    snap("2026-11-03", {"R_old": 110, "R_late": 60})
+    (b.DATA / "gh-trending.json").write_text(json.dumps({"repos": {
+        "R_old": ["2026-10-30", "2026-11-02", "2026-11-03", "2026-11-04"], "R_late": ["2026-11-02"]}}))
+    t = b.build(snaps, write=False)
+    rs = by_name(t)
+    assert rs["a/old"]["ght"] == 3          # 4th day is after the snapshot date
+    assert "ght" not in rs["a/late"]        # not on trending on 2026-11-03
+    assert t["gh_trending_since"] == "2026-10-30"

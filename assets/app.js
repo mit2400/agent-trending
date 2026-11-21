@@ -110,6 +110,10 @@
     const [o, n] = name.split("/");
     return `<span class="owner">${esc(o)}/</span>${esc(n)}`;
   };
+  const ordinal = (n) => {
+    const s = ["th", "st", "nd", "rd"], v = n % 100;
+    return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+  };
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const fmtDate = (d) => new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const ago = (d, ref) => {
@@ -185,7 +189,8 @@
     const t = r.type.map((x) => `<button class="tag" data-type="${esc(x)}">${esc(TYPE_LABEL[x] || x)}</button>`);
     const s = r.scope.filter((x) => x !== "general").map((x) => `<button class="tag scope" data-scope="${esc(x)}">${esc(SCOPE_LABEL[x] || x)}</button>`);
     const sk = r.skills ? `<button class="tag skills" data-goto-skills="${esc(r.name)}" title="Open this repo's skills on the Skills board">⬇ ${nf.format(r.skills.n)} skill${r.skills.n > 1 ? "s" : ""} · ${cf.format(r.skills.installs)}</button>` : "";
-    return (r.new ? `<span class="tag new">new</span>` : "") + t.join("") + s.join("") + sk;
+    const gt = r.ght ? `<span class="tag ght" title="On today's GitHub Trending page, for the ${ordinal(r.ght)} time since ${fmtDate(data.gh_trending_since || data.tracking_start)}">GitHub Trending · ${ordinal(r.ght)}</span>` : "";
+    return (r.new ? `<span class="tag new">new</span>` : "") + gt + t.join("") + s.join("") + sk;
   }
   function repoPodiumBig(r) {
     if (state.tab === "alltime") return `★ ${cf.format(r.stars)}<small>${r.delta ? `${deltaHTML(r.delta)} · ${windowLabel(r.window)}` : "stars"}</small>`;

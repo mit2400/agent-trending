@@ -49,3 +49,11 @@ def test_parse_trending_devs_dedupes_in_order():
 def test_parsers_return_empty_on_changed_markup():
     assert d.parse_trending("<div>new markup</div>") == []
     assert d.parse_trending_devs("<div>new markup</div>") == []
+
+
+def test_record_gh_trending_is_idempotent(tmp_path):
+    path = tmp_path / "gh-trending.json"
+    d.record_gh_trending(["R_a", "R_b"], "2026-11-21", path)
+    d.record_gh_trending(["R_a"], "2026-11-22", path)
+    log = d.record_gh_trending(["R_a"], "2026-11-22", path)
+    assert log["repos"] == {"R_a": ["2026-11-21", "2026-11-22"], "R_b": ["2026-11-21"]}
