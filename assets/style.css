@@ -306,3 +306,4 @@ h1 { font: 700 clamp(30px, 5.4vw, 52px)/1.05 var(--display); letter-spacing: -.0
 .tag.ght { background: var(--gold); color: var(--surface); }
 .rg { font: 500 10px var(--mono); color: var(--muted); }
 .foot .follow-h { margin-top: 24px; }
+.card .rank-badge.off { color: var(--muted); }  /* gold only for the real #1 on a filtered board */

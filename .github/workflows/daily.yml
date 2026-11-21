@@ -51,13 +51,9 @@ jobs:
             echo "not Monday; skipping source sync"
           fi
 
-      - name: Discover new repos (>= 5k stars; topic search Mondays, trending daily)
-        run: |
-          if [ "${{ inputs.sync_sources }}" = "true" ] || [ "$(date +%u)" = "1" ]; then
-            uv run python -m tf.discover
-          else
-            uv run python -m tf.discover --trending-only
-          fi
+      # daily, so a repo that crosses 5k stars mid-week is picked up the next day (~2.5 min)
+      - name: Discover new repos (>= 5k stars; GitHub topics + Trending)
+        run: uv run python -m tf.discover
 
       - name: Collect stars
         run: uv run python -m tf.collect

@@ -89,7 +89,7 @@ Tagging is rule-based (no LLM), so a few repos are untagged or tagged loosely.
 ```mermaid
 flowchart LR
   A[Curated lists] --> R
-  B[GitHub topics<br/>Mondays] --> R
+  B[GitHub topics] --> R
   C[GitHub Trending<br/>repos + developers] --> R
   M[Manual picks] --> R
   R[(registry.json<br/>tracked repos)] --> S[Daily snapshot<br/>stars per repo]
@@ -105,8 +105,8 @@ Everything runs in one GitHub Actions workflow, [`.github/workflows/daily.yml`](
 
 | When | Step |
 |---|---|
-| Mondays | Re-read the curated lists, search GitHub topics, drop repos that fell below 5k stars, publish the weekly digest |
-| Every day | Check GitHub Trending, collect stars, build the rankings, run the gate, commit the data, deploy the site |
+| Mondays | Re-read the curated lists, drop repos that fell below 5k stars, publish the weekly digest |
+| Every day | Search GitHub topics, check GitHub Trending, collect stars, build the rankings, run the gate, commit the data, deploy the site |
 
 **The gate** stops a bad run from being committed. It fails when:
 

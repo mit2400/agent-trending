@@ -173,17 +173,22 @@
     }
     return `${deltaHTML(r.delta)}${win ? `<span class="sub">${win}</span>` : ""}`;
   }
-  function filteredRepos() {
-    const q = state.q.trim().toLowerCase();
-    const rs = data.repos.filter((r) =>
-      (state.type === "all" || r.type.includes(state.type)) &&
-      (state.scope === "all" || r.scope.includes(state.scope)) &&
-      (!q || r.name.toLowerCase().includes(q) || (r.desc || "").toLowerCase().includes(q)));
+  // The whole board for the current tab, before type/ecosystem/search filters.
+  function boardRepos() {
+    const rs = data.repos.slice();
     const byDelta = (a, b) => (b.delta ?? -Infinity) - (a.delta ?? -Infinity) || b.stars - a.stars;
     if (!hasDeltas || state.tab === "alltime") return rs.sort((a, b) => b.stars - a.stars);
     if (state.tab === "rate") return rs.filter((r) => r.rate > 0 && r.base >= data.rate_min_base).sort((a, b) => b.rate - a.rate || byDelta(a, b));
     if (state.tab === "new") return rs.filter((r) => r.new).sort(byDelta);
     return rs.filter((r) => r.delta != null).sort(byDelta);
+  }
+  // Filters narrow the board but keep each repo's rank on the unfiltered board (r.rank).
+  function filteredRepos() {
+    const q = state.q.trim().toLowerCase();
+    return boardRepos().map((r, i) => Object.assign(r, { rank: i + 1 })).filter((r) =>
+      (state.type === "all" || r.type.includes(state.type)) &&
+      (state.scope === "all" || r.scope.includes(state.scope)) &&
+      (!q || r.name.toLowerCase().includes(q) || (r.desc || "").toLowerCase().includes(q)));
   }
   function repoTagsHTML(r) {
     const t = r.type.map((x) => `<button class="tag" data-type="${esc(x)}">${esc(TYPE_LABEL[x] || x)}</button>`);
@@ -202,7 +207,7 @@
     const podium = (hasDeltas || state.tab === "alltime") && !state.q && rs.length >= 3 ? rs.slice(0, 3) : [];
     $("podium").innerHTML = podium.map((r, i) => `
       <a class="card" href="https://github.com/${esc(r.name)}" target="_blank" rel="noopener">
-        <span class="rank-badge">#${i + 1}</span>
+        <span class="rank-badge${r.rank === 1 ? "" : " off"}">#${r.rank}</span>
         <div class="card-head">${avatar(r.name.split("/")[0], 28)}<span class="name">${nameHTML(r.name)}</span></div>
         <div class="big">${repoPodiumBig(r)}</div>
         <p class="desc">${esc(r.desc)}</p>
@@ -212,7 +217,7 @@
     setHead("Repository", "Stars", hasDeltas ? `${TABS.repos[state.tab].metric} (${windowLabel(curWindow())})` : "Gain");
     $("list").innerHTML = shown.map((r, i) => `
       <li class="row">
-        <span class="rank">${i + 1}</span>
+        <span class="rank">${r.rank}</span>
         <div class="repo">
           ${avatar(r.name.split("/")[0], 32)}
           <div class="repo-body">
