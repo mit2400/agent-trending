@@ -48,7 +48,7 @@ Repos come from four places:
 
 1. **Curated lists**: 19 awesome lists such as `punkpeye/awesome-mcp-servers`, `hesreallyhim/awesome-claude-code` and `ai-boost/awesome-harness-engineering`. Every GitHub link in them is a candidate. See [`data/sources.json`](data/sources.json).
 2. **GitHub topics**: repos tagged with topics like `ai-agents`, `mcp-server`, `agent-skills` or `claude-code` (17 topics).
-3. **GitHub Trending**: [trending repos](https://github.com/trending), plus the popular repo of each [trending developer](https://github.com/trending/developers). Only repos that look agent-related are added.
+3. **GitHub Trending**: [trending repos](https://github.com/trending), plus the popular repo of each [trending developer](https://github.com/trending/developers). Only repos that look agent-related are added. New candidates from search are looked up again by id before they are added, because search results can still list repos that were just deleted.
 4. **Manual picks**: [`data/overrides.json`](data/overrides.json).
 
 The footer of the page lists every source, with how many tracked repos each one supplies.
@@ -114,7 +114,7 @@ Everything runs in one GitHub Actions workflow, [`.github/workflows/daily.yml`](
 
 | When | Step |
 |---|---|
-| Mondays | Re-read the curated lists, drop repos that fell below 5k stars, publish the weekly digest |
+| Mondays | Re-read the curated lists, drop repos that fell below 5k stars or that GitHub has not returned for 7 days in a row (deleted or private), publish the weekly digest |
 | Every day | Search GitHub topics, check GitHub Trending, collect stars, build the rankings, run the gate, commit the data, deploy the site |
 
 **The gate** stops a bad run from being committed. It fails when:

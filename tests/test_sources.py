@@ -70,3 +70,13 @@ def test_section_type_rules():
     assert s.section_type("skills", rules) == "skill"
     assert s.section_type("misc", rules) is None
     assert s.clean_heading("## [MCP](x) Servers 🚀") == "mcp servers"
+
+
+def test_long_missing_needs_seven_straight_days(tmp_path):
+    import json
+    def snap(day, missing):
+        (tmp_path / f"2026-11-{day:02d}.json").write_text(json.dumps({"missing": missing}))
+    for day in range(1, 8):
+        snap(day, ["R_gone", "R_flaky"] if day != 4 else ["R_gone"])
+    assert s.long_missing(tmp_path) == {"R_gone"}          # R_flaky came back on day 4
+    assert s.long_missing(tmp_path, days=8) == set()        # fewer than 8 snapshots: drop nothing

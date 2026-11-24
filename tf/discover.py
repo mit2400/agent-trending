@@ -166,6 +166,13 @@ def discover(dry_run: bool = False, since: list[str] | None = None, topics_on: b
             trending_new += 1
     print(f"  trending repos + developers: {trending_new} new", file=sys.stderr)
 
+    # search results can lag behind deletions: confirm every candidate still resolves by id
+    if found:
+        alive = gh.repos_by_id(list(found), "id")
+        for rid in [rid for rid, n in alive.items() if not n]:
+            print(f"  skipping {found[rid][0]['nameWithOwner']}: no longer exists", file=sys.stderr)
+            del found[rid]
+
     added = []
     for rid, (n, hints, source) in found.items():
         if n["nameWithOwner"].lower() in blocked:

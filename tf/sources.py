@@ -12,7 +12,7 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from .common import DATA, load, now_iso, today
+from .common import DATA, SNAPSHOTS, load, now_iso, today
 from .gh import GitHub, topics
 from .probe import probe
 
@@ -154,6 +154,18 @@ def collect_hits(gh: GitHub, cfg: dict) -> dict[str, Hit]:
     return hits
 
 
+MISSING_DAYS = 7  # a repo absent from this many consecutive daily snapshots is dropped (deleted or private)
+
+
+def long_missing(snap_dir=SNAPSHOTS, days: int = MISSING_DAYS) -> set[str]:
+    """Repo ids listed as missing in each of the last `days` snapshots."""
+    files = sorted(snap_dir.glob("*.json"))[-days:]
+    if len(files) < days:
+        return set()
+    sets = [set(load(p).get("missing", [])) for p in files]
+    return set.intersection(*sets)
+
+
 def entry_from_node(node: dict) -> dict:
     return {
         "name": node["nameWithOwner"],
@@ -246,6 +258,13 @@ def sync(dry_run: bool = False) -> dict:
         if fresh[rid] < cfg["min_stars"]:
             del repos[rid]
             stats["pruned"] += 1
+    # prune: repos GitHub has not returned for MISSING_DAYS straight days (deleted, private or banned);
+    # a short outage or a brief private switch does not count
+    for rid in long_missing() - fresh.keys():
+        if rid in repos:
+            print(f"  dropping {repos[rid]['name']}: missing for {MISSING_DAYS}+ days", file=sys.stderr)
+            del repos[rid]
+            stats["pruned_missing"] += 1
 
     probed = probe(gh, repos)
     print(f"probed {probed} new repos for marker files", file=sys.stderr)
