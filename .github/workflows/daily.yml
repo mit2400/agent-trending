@@ -15,7 +15,7 @@ on:
         default: false
   push:                      # page/code changes redeploy without collecting
     branches: [main]
-    paths: ["index.html", "assets/**", "tf/**", "preview/**", "pyproject.toml", ".github/workflows/daily.yml"]
+    paths: ["index.html", "assets/**", "tf/**", "pyproject.toml", ".github/workflows/daily.yml"]
 
 permissions:
   contents: write
@@ -184,8 +184,7 @@ jobs:
             exit 0
           fi
           if compgen -G "data/skills-raw/all-time/*.json" > /dev/null; then
-            # before tf.build (repo rows link to their skills); preview data until 2 production days exist
-            uv run python -m tf.skills build --preview-dir preview/skills
+            uv run python -m tf.skills build   # before tf.build: repo rows link to their skills
           fi
           uv run python -m tf.build
           mkdir -p _site/data

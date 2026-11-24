@@ -187,28 +187,10 @@ def test_gate_fails_on_shrunk_list_and_outside_changes(gated):
     assert any("outside data/" in e for e in errors)
 
 
-def test_gate_fails_without_todays_list_or_on_preview(gated):
-    raw, day, many, _ = gated
+def test_gate_fails_without_todays_list(gated):
+    raw, *_ = gated
     errors, _ = sk.check("2026-11-22", raw)
     assert any("all-time list for 2026-11-22" in e for e in errors)
-    day("2026-11-22", many, [["o/s|k1", 5]])
-    sk.build(raw=raw, preview=True)
-    errors, _ = sk.check("2026-11-22", raw)
-    assert any("preview" in e for e in errors)
-
-
-def test_preview_until_two_production_days(env, tmp_path):
-    raw, day = env
-    prev_dir = tmp_path / "preview"
-    day("2026-11-20", {A: 100}, [[A, 5]], root=prev_dir)
-    day("2026-11-21", {A: 130}, [[A, 5]], root=prev_dir)
-    assert sk.use_preview(raw, None) is False
-    day("2026-11-22", {A: 140}, [[A, 5]])
-    assert sk.use_preview(raw, prev_dir) is True      # production has 1 day
-    t = sk.build(raw=prev_dir, write=False, preview=True)
-    assert t["preview"] and t["prev_collected_at"] == "2026-11-20T15:00:00Z" and by_key(t)[A]["p"]["1"]["d"] == 30
-    day("2026-11-23", {A: 150}, [[A, 5]])
-    assert sk.use_preview(raw, prev_dir) is False     # production takes over
 
 
 def test_tracked_repo_skills_ship_as_extras(env, monkeypatch):

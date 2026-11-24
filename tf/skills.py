@@ -15,10 +15,6 @@ A skill's key is "source|skillId" (both parts may contain "/").
 Usage:
   uv run python -m tf.skills collect [--date D] [--force]   fetch both lists into data/skills-raw/
   uv run python -m tf.skills build [--date D]               write data/skills.json
-  uv run python -m tf.skills build --preview-dir preview/skills
-                                                           same, but while production has fewer than two
-                                                           days, build from two manual test collections
-                                                           instead and mark the page as preview
   uv run python -m tf.skills gate [--date D]                validate before the daily commit
 """
 
@@ -243,7 +239,7 @@ def repo_index() -> dict[str, dict]:
             for rid, e in reg.items() if not e.get("archived")}
 
 
-def build(date: str | None = None, raw: Path = RAW, write: bool = True, preview: bool = False) -> dict:
+def build(date: str | None = None, raw: Path = RAW, write: bool = True) -> dict:
     dates = available_dates(raw, date)
     if not dates:
         raise SystemExit(f"no skill snapshots in {raw}")
@@ -304,7 +300,6 @@ def build(date: str | None = None, raw: Path = RAW, write: bool = True, preview:
     out = {
         "generated_at": now_iso(),
         "date": date,
-        "preview": preview,
         "tracking_start": dates[0],
         "periods": periods,
         "collected_at": cur.collected_at,
@@ -322,13 +317,6 @@ def build(date: str | None = None, raw: Path = RAW, write: bool = True, preview:
         print(f"skills.json: {len(rows)} shown of {len(tracked)} tracked, periods {periods}, "
               f"{len(days)} days read", file=sys.stderr)
     return out
-
-
-def use_preview(raw: Path, preview_dir: Path | None) -> bool:
-    """Deploy preview data until production has two days to compare."""
-    if not preview_dir:
-        return False
-    return len(available_dates(raw)) < 2 and len(available_dates(preview_dir)) >= 2
 
 
 # ---------------------------------------------------------------- gate
@@ -372,8 +360,6 @@ def check(date: str, raw: Path = RAW) -> tuple[list[str], list[str]]:
     out = load(OUT)
     if not out or out.get("date") != date:
         errors.append("skills.json missing or not built for today")
-    elif out.get("preview"):
-        errors.append("skills.json is preview data")
     return errors, warns
 
 
@@ -384,16 +370,11 @@ if __name__ == "__main__":
     ap.add_argument("--date")
     ap.add_argument("--raw", type=Path, default=RAW)
     ap.add_argument("--force", action="store_true")
-    ap.add_argument("--preview-dir", type=Path, help="raw-layout test collections to use until production has 2 days")
     a = ap.parse_args()
     if a.cmd == "collect":
         collect(a.date or today(), a.raw, a.force)
     elif a.cmd == "build":
-        if use_preview(a.raw, a.preview_dir):
-            print(f"fewer than 2 production days; building preview data from {a.preview_dir}", file=sys.stderr)
-            build(a.date, a.preview_dir, preview=True)
-        else:
-            build(a.date, a.raw)
+        build(a.date, a.raw)
     else:
         d = a.date or today()
         errors, warns = check(d, a.raw)

@@ -130,7 +130,7 @@ When it fails, nothing is committed and an issue is opened automatically.
 
 **What is committed:** only the raw data: the registry, one small snapshot per day, `activity.json` (last push date per repo, overwritten daily) and `gh-trending.json` (days each repo was on GitHub Trending) (about 30 KB compressed, about 10 MB per year). The page data (`trending.json`, `skills.json`) and the RSS feed are rebuilt from the raw data on every deploy and are never committed.
 
-For skills, the full daily lists are committed the same way: `data/skills-raw/all-time/DATE.json` and `data/skills-raw/trending/DATE.json`, never pruned. Each file has one skill per line, so git stores a day as a delta against the previous one (about 110 KB of history a day, roughly 40 MB a year; the files themselves are about 1 MB a day on disk). Builds read only the last 30 days. `skills.json` is rebuilt on every deploy. Until production has two days to compare, the deploy builds the Skills board from `preview/skills/` instead: two real collections taken 48 minutes apart, labelled as preview on the page.
+For skills, the full daily lists are committed the same way: `data/skills-raw/all-time/DATE.json` and `data/skills-raw/trending/DATE.json`, never pruned. Each file has one skill per line, so git stores a day as a delta against the previous one (about 110 KB of history a day, roughly 40 MB a year; the files themselves are about 1 MB a day on disk). Builds read only the last 30 days. `skills.json` is rebuilt on every deploy.
 
 ---
 
@@ -160,7 +160,6 @@ data/
   skills-raw/trending/DATE.json  skills.sh 24-hour list in rank order
   digests/YYYY-Www.md         weekly digests
 index.html, assets/           the static page (no build step, no framework)
-preview/skills/               two test collections shown on the Skills board until production has 2 days
 tools/make_og.py              regenerates the social card (assets/og.png)
 tests/                        pytest
 ```
@@ -195,7 +194,7 @@ Curated-list changes (`sources`) take effect on the next Monday run; `overrides.
 - **`sync_sources`**: re-read the lists and update the registry. This also collects today's stars, if they were not collected yet.
 - **`deploy_only`**: just rebuild and redeploy the site, with no collection.
 
-A push to `main` that touches `index.html`, `assets/`, `tf/`, `preview/`, `pyproject.toml` or the workflow also runs the tests and redeploys the site, without collecting.
+A push to `main` that touches `index.html`, `assets/`, `tf/`, `pyproject.toml` or the workflow also runs the tests and redeploys the site, without collecting.
 
 ---
 
@@ -215,7 +214,6 @@ uv run python -m tf.gate                  # the checks the workflow runs
 
 uv run python -m tf.skills collect        # today's skills.sh lists into data/skills-raw/ (about 8 min)
 uv run python -m tf.skills build          # data/skills.json (run before tf.build)
-uv run python -m tf.skills build --preview-dir preview/skills   # what the deploy runs
 uv run python -m tf.skills gate           # the skills checks the workflow runs
 uv run python -m tf.publish feed --out feed.xml
 uv run python -m tf.publish digest --force
